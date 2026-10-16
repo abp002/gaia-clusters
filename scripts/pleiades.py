@@ -12,7 +12,8 @@ import numpy as np
 import pandas as pd
 
 from gaia_clusters import fetch
-from gaia_clusters.cluster import best_match, hdbscan_labels, tangent_plane
+from gaia_clusters.cluster import features, hdbscan_runs, tangent_plane
+from gaia_clusters.score import score
 
 RA, DEC, RADIUS = 56.75, 24.12, 6.0
 DATA = Path("data")
@@ -28,13 +29,13 @@ if not MEMBERS.exists():
     fetch.hr23_members("Melotte_22").to_parquet(MEMBERS)
 stars, ref = pd.read_parquet(CONE), pd.read_parquet(MEMBERS)
 
-labels = hdbscan_labels(stars, RA, DEC, min_cluster_size, min_samples)
-m = best_match(stars.Source, labels, ref.GaiaDR3)
+labels = hdbscan_runs(features(stars, RA, DEC), [min_cluster_size], min_samples)[min_cluster_size]
+m = score(stars.Source, labels, ref, ["Melotte_22"]).iloc[0]
 cl = stars[labels == m.label]
 
 print(f"stars: {len(stars)}  clusters: {labels.max() + 1}  noise: {(labels < 0).mean():.1%}")
-print(f"HR23 members: {len(ref)}, passing our cuts inside the cone: {m.reference}")
-print(f"Pleiades cluster: {m.size} stars, {m.hits} in HR23")
+print(f"HR23 members: {len(ref)}, passing our cuts inside the cone: {m.n}")
+print(f"Pleiades cluster: {m['size']} stars, {m.hits} in HR23")
 print(f"  recovery {m.recovery:.1%}  purity {m.purity:.1%}")
 print(f"  centre: plx {cl.Plx.median():.2f} mas, pm ({cl.pmRA.median():.1f}, {cl.pmDE.median():.1f}) mas/yr")
 

@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from gaia_clusters.cluster import best_match, tangent_plane
+from gaia_clusters.cluster import tangent_plane
+from gaia_clusters.region import GalacticBox, galactic
 
 
 def test_centre_projects_to_origin():
@@ -22,21 +23,14 @@ def test_east_is_positive_x_and_north_is_positive_y():
     assert x[0] > 0 and y[1] > 0
 
 
-def test_recovery_counts_only_reference_members_present_in_the_input():
-    ids = [1, 2, 3, 4, 5]
-    labels = [0, 0, 0, -1, 1]
-    m = best_match(ids, labels, reference_ids=[1, 2, 4, 99])  # 99 failed our cuts
-    assert (m.label, m.size, m.hits, m.reference) == (0, 3, 2, 3)
-    assert m.recovery == pytest.approx(2 / 3)
-    assert m.purity == pytest.approx(2 / 3)
+def test_box_corners_map_back_to_the_box():
+    box = GalacticBox(170, 180, -5, 5)
+    l, b = galactic(*zip(*box.icrs_corners()))
+    assert np.allclose(l, [170, 180, 180, 170], atol=1e-6)
+    assert np.allclose(b, [-5, -5, 5, 5], atol=1e-6)
 
 
-def test_picks_the_cluster_with_most_members_not_the_biggest():
-    ids = list(range(10))
-    labels = [0] * 7 + [1] * 3  # the field is cluster 0, the real cluster is 1
-    m = best_match(ids, labels, reference_ids=[0, 7, 8, 9])
-    assert m.label == 1 and m.hits == 3
-
-
-def test_noise_never_matches():
-    assert best_match([1, 2], [-1, -1], reference_ids=[1, 2]) is None
+def test_box_wraps_longitude_and_excludes_upper_edges():
+    box = GalacticBox(170, 180, -5, 5)
+    assert box.contains([170, 179.99, 180, 175, 175, 530], [0, 0, 0, -5, 5, 0]).tolist() == \
+        [True, True, False, True, False, True]

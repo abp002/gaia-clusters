@@ -5,6 +5,7 @@ description = "Recover known open clusters from Gaia DR3 with HDBSCAN, measured 
 requires-python = ">=3.12"
 dependencies = [
     "astroquery>=0.4.11",
+    "hdbscan>=0.8.44",
     "matplotlib>=3.9",
     "numpy>=2.0",
     "pandas>=2.2",
