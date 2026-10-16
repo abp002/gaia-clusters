@@ -1,0 +1,20 @@
+[project]
+name = "gaia-clusters"
+version = "0.1.0"
+description = "Recover known open clusters from Gaia DR3 with HDBSCAN, measured against Hunt & Reffert (2023)."
+requires-python = ">=3.12"
+dependencies = [
+    "astroquery>=0.4.11",
+    "matplotlib>=3.9",
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "scikit-learn>=1.6",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
