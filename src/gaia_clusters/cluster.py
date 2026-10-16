@@ -25,11 +25,13 @@ def features(stars: pd.DataFrame, lon0: float, lat0: float, lon="RA_ICRS", lat="
     return RobustScaler().fit_transform(np.column_stack([x, y, stars.Plx, stars.pmRA, stars.pmDE]))
 
 
-def hdbscan_runs(X: np.ndarray, min_cluster_sizes, min_samples: int = 10) -> dict[int, np.ndarray]:
+def hdbscan_runs(X: np.ndarray, min_cluster_sizes, min_samples: int = 10, method: str = "eom",
+                 cache_dir: str | None = None) -> dict[int, np.ndarray]:
     """Labels for each min_cluster_size. The minimum spanning tree depends only on min_samples, so it
-    is built once and cached; each extra size only re-cuts the tree."""
-    with tempfile.TemporaryDirectory() as cache:
-        memory = Memory(cache, verbose=0)
+    is built once and cached; each extra size or selection method only re-cuts the tree. With
+    `cache_dir` the tree outlives the call."""
+    with tempfile.TemporaryDirectory() as tmp:
+        memory = Memory(cache_dir or tmp, verbose=0)
         return {size: hdbscan.HDBSCAN(min_cluster_size=size, min_samples=min_samples, memory=memory,
-                                      core_dist_n_jobs=-1).fit_predict(X)
+                                      cluster_selection_method=method, core_dist_n_jobs=-1).fit_predict(X)
                 for size in min_cluster_sizes}

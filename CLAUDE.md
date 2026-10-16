@@ -20,6 +20,9 @@ Issues: abp002/gaia-clusters
 - `score.py`: the matching rule of `docs/protocol-auriga.md` (recovery > 0.5 and purity > 0.5, over
   reference members that passed our cuts; recoverable = at least 10 of them). The best match is the
   cluster with most reference members, not the biggest: the field can come out as one huge cluster.
+- Cluster selection: use `method="leaf"`. Excess of mass (the library default, used by the Auriga
+  protocol) puts the field into one giant group and hides the clusters in it: 3 % recovered against
+  81 % with leaf, post hoc. Hunt & Reffert's Paper I (A&A 646, A104) picked leaf for this reason.
 - Protocols in `docs/` are fixed before a run. Never edit one after seeing results: report changes as post hoc.
 - Never call it discovery: the reference used the same method on the same data.
 - `data/` is gitignored and rebuilt by the scripts.
