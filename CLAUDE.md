@@ -12,7 +12,8 @@ Issues: abp002/gaia-clusters
 - `fetch.py`: cones from VizieR (`I/355/gaiadr3`, ~15 min for 6°), regions from the GAVO Data Center
   (`gaia.dr3lite`, async TAP polled by hand: GAVO drops pyvo's long polls), Hunt & Reffert tables from
   VizieR (`J/A+A/673/A114`). ESA's Gaia TAP returned 500/408 on cone queries in Oct 2026.
-- `region.py`: `GalacticBox`; the download is a 4-corner ICRS polygon, then filtered exactly in (l, b).
+- `region.py`: `GalacticBox` and `REGIONS` (auriga, carina); the download is a 4-corner ICRS polygon,
+  then filtered exactly in (l, b).
 - Quality cuts live in `fetch.py`: parallax > 1 mas, RUWE < 1.4, parallax/error > 5.
 - `cluster.py`: gnomonic tangent plane (degrees) + parallax + proper motion, `RobustScaler` (as
   Hunt & Reffert), HDBSCAN from the `hdbscan` library (Boruvka, scales to millions; scikit-learn's is
@@ -20,6 +21,8 @@ Issues: abp002/gaia-clusters
 - `score.py`: the matching rule of `docs/protocol-auriga.md` (recovery > 0.5 and purity > 0.5, over
   reference members that passed our cuts; recoverable = at least 10 of them). The best match is the
   cluster with most reference members, not the biggest: the field can come out as one huge cluster.
+- `predict.py`: what one region's recovery rates by members bin predict for another (Jeffreys Beta
+  per bin, then binomial). It is the replication test of `docs/protocol-carina.md`.
 - Cluster selection: use `method="leaf"`. Excess of mass (the library default, used by the Auriga
   protocol) puts the field into one giant group and hides the clusters in it: 3 % recovered against
   81 % with leaf, post hoc. Hunt & Reffert's Paper I (A&A 646, A104) picked leaf for this reason.
@@ -30,5 +33,6 @@ Issues: abp002/gaia-clusters
 ## Commands
 - `uv run pytest` — projection and scoring tests.
 - `uv run scripts/pleiades.py [min_cluster_size] [min_samples]` — Pleiades check, writes `figures/pleiades.png`.
-- `uv run scripts/fetch_region.py` then `uv run scripts/auriga.py` — Auriga region; labels cached in
-  `data/auriga_labels.parquet` (delete it to recluster), scores in `results/`.
+- `uv run scripts/fetch_region.py <region>` then `uv run scripts/score_region.py <region>` — one region
+  (`auriga`, `carina`); labels cached in `data/<region>_labels_<method>.parquet` (delete to recluster),
+  scores in `results/`, figures in `figures/`. `--predict` prints the prediction alone, before clustering.

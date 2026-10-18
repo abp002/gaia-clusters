@@ -88,7 +88,7 @@ Full tables in [results/auriga.md](results/auriga.md), one row per cluster in `r
 ```bash
 uv sync
 uv run pytest
-uv run scripts/pleiades.py       # downloads into data/ on first run (~15 min from VizieR)
-uv run scripts/fetch_region.py   # Auriga stars from GAVO and Hunt & Reffert members from VizieR
-uv run scripts/auriga.py         # HDBSCAN runs (protocol and post hoc), scores, figures
+uv run scripts/pleiades.py              # downloads into data/ on first run (~15 min from VizieR)
+uv run scripts/fetch_region.py auriga   # stars from GAVO, Hunt & Reffert members from VizieR
+uv run scripts/score_region.py auriga   # HDBSCAN runs, scores, figures (same for carina)
 ```

@@ -35,4 +35,6 @@ def galactic(ra, dec) -> tuple[np.ndarray, np.ndarray]:
     return g.l.deg, g.b.deg
 
 
-AURIGA = GalacticBox(170, 180, -5, 5)
+AURIGA = GalacticBox(170, 180, -5, 5)  # the anticentre: the thinnest field (docs/protocol-auriga.md)
+CARINA = GalacticBox(285, 295, -5, 5)  # the most Hunt & Reffert clusters (docs/protocol-carina.md)
+REGIONS = {"auriga": AURIGA, "carina": CARINA}
