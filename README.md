@@ -53,8 +53,8 @@ and much better at recovering small clusters, which hold very few stars next to 
 
 **Post hoc, switching to leaf selection and changing nothing else: 84 of 104 recovered (81 %)**,
 and 62 of the 70 that Hunt & Reffert rate highly reliable (89 %). This number was obtained after
-seeing the first one, so it needs a second region with leaf selection fixed in advance before it
-counts as a result.
+seeing the first one, so a second region with leaf selection fixed in advance had to confirm it:
+Carina, below.
 
 | | Protocol (excess of mass) | Post hoc (leaf) |
 |---|---|---|
@@ -82,6 +82,66 @@ a significance test and a colour-magnitude classifier, which this project does n
 ![Colour-magnitude diagrams of M36, M37, M38 and Berkeley 71 as recovered by the leaf runs](figures/auriga_cmd.png)
 
 Full tables in [results/auriga.md](results/auriga.md), one row per cluster in `results/auriga_scores_*.csv`.
+
+## A second region, fixed in advance: Carina
+
+Galactic longitude 285–295°, latitude −5° to +5°, along the Carina arm: 2,521,944 stars after the
+same cuts, 4.4 times Auriga's field, and 224 Hunt & Reffert clusters, the most of any 10° window
+along the plane. That rule picked the region, from the catalogue alone. 202 of its clusters keep at
+least 10 members after our cuts. The protocol, [docs/protocol-carina.md](docs/protocol-carina.md),
+is Auriga's with leaf selection instead of excess of mass, and was committed before the first run
+(`f8d1d03`).
+
+The protocol also said when Auriga's result would count as replicated. Auriga's leaf rates by
+members in our sample (60 % for 10–29, 96 % for 30–99, 100 % for 100 or more), applied to Carina's
+clusters, predict 81.5 %, with a 95 % range of 73.3 % to 89.1 %. The bar was the bottom of that
+range: at least 148 of the 202.
+
+**Result: 149 of 202 recovered (73.8 %). Auriga's result replicates, with one cluster to spare.**
+It lands at the bottom of the predicted range, 8 points under the prediction: the denser field
+costs something, and Auriga, with the thinnest field, is the easier case.
+
+| | Auriga, post hoc | Carina, fixed in advance |
+|---|---|---|
+| Stars after the cuts | 576,442 | 2,521,944 |
+| All recoverable | 84 of 104 (81 %) | 149 of 202 (74 %) |
+| Highly reliable | 62 of 70 (89 %) | 107 of 132 (81 %) |
+| Under 1 kpc | 17 of 18 | 14 of 20 |
+| 1–2 kpc | 37 of 46 | 34 of 37 |
+| 2–3 kpc | 18 of 22 | 57 of 78 |
+| 3 kpc and beyond | 12 of 18 | 44 of 67 |
+| 10–29 members in our sample | 27 of 45 (60 %) | 43 of 78 (55 %) |
+| 30–99 members | 47 of 49 (96 %) | 76 of 94 (81 %) |
+| 100 members or more | 10 of 10 | 30 of 30 |
+
+![Carina: recovered and missed clusters on the sky, and recovery by distance and by members](figures/carina.png)
+
+Against the expectations in the protocol:
+- Excess of mass fails again: 2 of 202 (1 %). With min_cluster_size 10 it puts 2,520,594 of the
+  2,521,944 stars into one group.
+- Highly reliable clusters come back more often than the rest: 81 % against 60 %.
+- Recovery does not fall steadily with distance: 70, 92, 73 and 66 %. The nearest bin breaks the
+  pattern. Four of its six misses have only 10 to 15 members in our sample, and the other two hold
+  most of their members in a group where they fall just short of half (purity 0.48 and 0.49).
+- Recovery is lower than Auriga's for clusters with fewer than 100 members in our sample (55 against
+  60 %, 81 against 96 %). Those with 100 or more are all recovered in both regions.
+
+Most misses are close calls, and that is where the denser field shows. Post hoc, as a description
+and not a new result: in 28 of the 53 misses, the closest run scores above 0.4 on both recovery and
+purity, against 6 of 20 in Auriga. In 21 of them it holds most of the cluster's members, but they
+are only 40–50 % of the group, which also takes in field stars.
+
+The leaf run with min_cluster_size 10 finds 2,281 groups, and in 2,109 of them no Hunt & Reffert
+cluster holds the majority. As in Auriga, they are not discoveries.
+
+![Colour-magnitude diagrams of NGC 3532, IC 2714, Trumpler 19 and Majaess 133 as recovered by the leaf runs](figures/carina_cmd.png)
+
+The diagrams show the three richest clusters in the reference and the farthest recovered one with
+at least 30 members. NGC 3532 even shows its white dwarfs, bottom left, and Trumpler 19 its red
+giants. Majaess 133, at 6.8 kpc, draws no clear sequence: Hunt & Reffert's own classifier gives its
+diagram 0.04 out of 1. Matching their members is not the same as being a cluster.
+
+Full tables in [results/carina.md](results/carina.md), one row per cluster in `results/carina_scores_*.csv`.
 
 ## Run
 

@@ -25,7 +25,8 @@ Issues: abp002/gaia-clusters
   per bin, then binomial). It is the replication test of `docs/protocol-carina.md`.
 - Cluster selection: use `method="leaf"`. Excess of mass (the library default, used by the Auriga
   protocol) puts the field into one giant group and hides the clusters in it: 3 % recovered against
-  81 % with leaf, post hoc. Hunt & Reffert's Paper I (A&A 646, A104) picked leaf for this reason.
+  81 % with leaf, post hoc. Carina, with leaf fixed in advance: 74 % (bar 73.3 %), excess of mass 1 %.
+  Hunt & Reffert's Paper I (A&A 646, A104) picked leaf for this reason.
 - Protocols in `docs/` are fixed before a run. Never edit one after seeing results: report changes as post hoc.
 - Never call it discovery: the reference used the same method on the same data.
 - `data/` is gitignored and rebuilt by the scripts.

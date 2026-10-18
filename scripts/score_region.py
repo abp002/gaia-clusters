@@ -228,6 +228,6 @@ for a, cl in zip(np.atleast_1d(axes), picks):
                 f"recovery {r[f'recovery_{k}']:.0%}, purity {r[f'purity_{k}']:.0%}",
                 loc="left", fontsize=8.5, color=INK)
     a.set(xlabel="BP − RP", ylabel="G")
-np.atleast_1d(axes)[0].legend(frameon=False, fontsize=7.5, loc="lower left")
+np.atleast_1d(axes)[0].legend(frameon=False, fontsize=7.5, loc="upper right")
 fig.tight_layout()
 fig.savefig(figures / f"{name}_cmd.png", dpi=130, bbox_inches="tight")
