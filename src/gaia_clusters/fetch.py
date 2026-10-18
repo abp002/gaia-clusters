@@ -36,18 +36,35 @@ def cone(ra: float, dec: float, radius_deg: float) -> pd.DataFrame:
 def box(region: GalacticBox, min_parallax: float | None = None) -> pd.DataFrame:
     """Stars in a galactic box with RUWE < 1.4 and parallax_over_error > 5, in the same column
     names as `cone`. No parallax floor unless given: a region holds clusters at every distance."""
-    poly = ", ".join(f"{ra:.6f}, {dec:.6f}" for ra, dec in region.icrs_corners())
     floor = f"AND parallax > {min_parallax}" if min_parallax is not None else ""
     query = f"""
         SELECT source_id, ra, dec, parallax, parallax_error, pmra, pmdec,
                phot_g_mean_mag, phot_bp_mean_mag - phot_rp_mean_mag AS bp_rp, ruwe
         FROM gaia.dr3lite
-        WHERE 1 = CONTAINS(POINT('ICRS', ra, dec), POLYGON('ICRS', {poly}))
-          AND ruwe < {MAX_RUWE} AND parallax > {MIN_PARALLAX_SNR} * parallax_error {floor}"""
+        WHERE {_box_where(region)} {floor}"""
     t = _async(GAVO_TAP, query).to_pandas()
     t.columns = COLUMNS
     t["GLON"], t["GLAT"] = galactic(t.RA_ICRS, t.DE_ICRS)
     return t[region.contains(t.GLON, t.GLAT)].reset_index(drop=True)
+
+
+def distances(region: GalacticBox) -> pd.DataFrame:
+    """Bailer-Jones et al. (2021) geometric distances in pc (median, 16th and 84th percentiles) for
+    the stars `box` returns: same polygon, same cuts. The exact (l, b) filter comes when merging on
+    Source. Geometric, not photogeometric: every star with a parallax has one."""
+    query = f"""
+        SELECT source_id, r_med_geo, r_lo_geo, r_hi_geo
+        FROM gedr3dist.litewithdist
+        WHERE {_box_where(region)}"""
+    t = _async(GAVO_TAP, query).to_pandas()
+    t.columns = ["Source", "r_med_geo", "r_lo_geo", "r_hi_geo"]
+    return t
+
+
+def _box_where(region: GalacticBox) -> str:
+    poly = ", ".join(f"{ra:.6f}, {dec:.6f}" for ra, dec in region.icrs_corners())
+    return f"""1 = CONTAINS(POINT('ICRS', ra, dec), POLYGON('ICRS', {poly}))
+          AND ruwe < {MAX_RUWE} AND parallax > {MIN_PARALLAX_SNR} * parallax_error"""
 
 
 def _async(url: str, query: str, poll_s: int = 30):

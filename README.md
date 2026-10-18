@@ -143,12 +143,46 @@ diagram 0.04 out of 1. Matching their members is not the same as being a cluster
 
 Full tables in [results/carina.md](results/carina.md), one row per cluster in `results/carina_scores_*.csv`.
 
+## In three dimensions
+
+The viewer in [viewer/](viewer/) shows both regions in space, seen from outside the wedge that each
+one fills from the Sun: the field, the recovered clusters and the missed ones. Each cluster has a
+card with its distance, recovery, purity and colour-magnitude diagram.
+
+![The viewer: Carina's wedge seen from beside the Sun, with Trumpler 19 selected](figures/viewer.png)
+
+- **Field stars sit at their own distance**, the geometric one of
+  [Bailer-Jones et al. (2021)](https://doi.org/10.3847/1538-3881/abd806), not at one over the
+  parallax, which is biased when the parallax is uncertain. It comes from the same GAVO service
+  (`gedr3dist.litewithdist`), with the polygon and cuts of the star download.
+- **The members of a recovered cluster sit at the cluster's distance** in Hunt & Reffert
+  (`dist50`), each at its own place on the sky. A member's own distance is uncertain by 87 pc in
+  Carina and 85 pc in Auriga (median), while half of a cluster's members sit within 3.2 and 3.6 pc
+  of its centre (median `r50pc`). At their own distances, clusters would be needles some 25 times
+  longer than wide, pointing at the Sun. The cost: depth is not shown, and seen side-on a cluster is
+  flat.
+- A recovered cluster is drawn with the group of the run that recovers it best (highest recovery ×
+  purity), and a missed one as a ring at its catalogue position. In the colour-magnitude diagram,
+  blue stars are in both our group and Hunt & Reffert, red only in our group and grey only in
+  Hunt & Reffert: blue against red is purity, blue against grey is recovery.
+- The groups that no Hunt & Reffert cluster owns (2,109 in Carina's min_cluster_size 10 run, 494 in
+  Auriga's) stay hidden behind a toggle labelled unverified.
+- **Level of detail:** the field is stored in random order and sent in nested levels of 65,536 stars,
+  doubling each time, so every level is a uniform sample of the field. The page shows the first at
+  once, adds the rest as they arrive (on a phone, up to 524,288 unless asked) and draws fewer while
+  the view moves. Like the sky maps above, it shows the field as a density on a log scale.
+
+`uv run scripts/export_viewer.py <region>` writes the page's data into `viewer/data/<region>/`
+(3.6 MB for Auriga, 15.5 MB for Carina) from what the scoring produces, and
+`python3 -m http.server -d viewer` serves the page locally.
+
 ## Run
 
 ```bash
 uv sync
 uv run pytest
 uv run scripts/pleiades.py              # downloads into data/ on first run (~15 min from VizieR)
-uv run scripts/fetch_region.py auriga   # stars from GAVO, Hunt & Reffert members from VizieR
+uv run scripts/fetch_region.py auriga   # stars and distances from GAVO, Hunt & Reffert members from VizieR
 uv run scripts/score_region.py auriga   # HDBSCAN runs, scores, figures (same for carina)
+uv run scripts/export_viewer.py auriga  # the viewer's data
 ```

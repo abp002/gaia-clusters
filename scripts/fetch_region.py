@@ -1,4 +1,5 @@
-"""Download a region: Gaia DR3 stars from GAVO and Hunt & Reffert members from VizieR.
+"""Download a region: Gaia DR3 stars and their Bailer-Jones distances from GAVO, and Hunt & Reffert
+members from VizieR.
 
 uv run scripts/fetch_region.py auriga|carina
 """
@@ -16,7 +17,8 @@ DATA.mkdir(exist_ok=True)
 
 for file, get in [("hr23_clusters", fetch.hr23_clusters),
                   (f"{name}_hr23_members", lambda: fetch.hr23_members_in(box)),
-                  (f"{name}_stars", lambda: fetch.box(box))]:
+                  (f"{name}_stars", lambda: fetch.box(box)),
+                  (f"{name}_distances", lambda: fetch.distances(box))]:
     path = DATA / f"{file}.parquet"
     if path.exists():
         continue

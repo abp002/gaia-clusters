@@ -38,3 +38,14 @@ def galactic(ra, dec) -> tuple[np.ndarray, np.ndarray]:
 AURIGA = GalacticBox(170, 180, -5, 5)  # the anticentre: the thinnest field (docs/protocol-auriga.md)
 CARINA = GalacticBox(285, 295, -5, 5)  # the most Hunt & Reffert clusters (docs/protocol-carina.md)
 REGIONS = {"auriga": AURIGA, "carina": CARINA}
+
+# Per region: each selection method with its standing under that region's protocol (the protocol's
+# own first), the clusters named on the sky map and drawn as colour-magnitude diagrams (the three
+# richest in Hunt & Reffert for Carina), and the region whose leaf rates predict this one.
+SETUP = {
+    "auriga": {"methods": {"eom": "Protocol: excess of mass (library default)", "leaf": "Post hoc: leaf selection"},
+               "named": {"NGC_1960": "M36", "NGC_2099": "M37", "NGC_1912": "M38"}},
+    "carina": {"methods": {"leaf": "Protocol: leaf selection", "eom": "Secondary: excess of mass (library default)"},
+               "named": {"NGC_3532": "NGC 3532", "IC_2714": "IC 2714", "Trumpler_19": "Trumpler 19"},
+               "predicted_from": "auriga"},
+}

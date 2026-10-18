@@ -31,6 +31,25 @@ def score(source_ids, labels, members: pd.DataFrame, reference) -> pd.DataFrame:
     return out.reset_index()
 
 
+def shown_run(r: pd.Series, sizes) -> int:
+    """The run a scored cluster is shown with (`r` is a row of score_region's table). Of the runs that
+    recover it, the one with the highest recovery × purity; for a missed cluster, the run that came
+    closest, with the highest min(recovery, purity). Ties go to the smallest min_cluster_size."""
+    if r["recovered"]:
+        return max((k for k in sizes if r[f"recovered_{k}"]), key=lambda k: r[f"recovery_{k}"] * r[f"purity_{k}"])
+    return max(sizes, key=lambda k: min(r[f"recovery_{k}"], r[f"purity_{k}"]))
+
+
+def how_missed(r: pd.Series, sizes) -> str:
+    """How a missed cluster fails, judged on the run that came closest."""
+    k = shown_run(r, sizes)
+    if r[f"recovery_{k}"] > 0.5:
+        return "inside a bigger group (purity ≤ 0.5)"
+    if r[f"purity_{k}"] > 0.5:
+        return "only partly found (recovery ≤ 0.5)"
+    return "not found"
+
+
 def unmatched(source_ids, labels, members: pd.DataFrame) -> np.ndarray:
     """Labels of our clusters in which no Hunt & Reffert cluster, wherever its centre, holds more than half the stars."""
     ours = pd.DataFrame({"GaiaDR3": np.asarray(source_ids), "label": np.asarray(labels)})

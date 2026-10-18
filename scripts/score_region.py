@@ -20,19 +20,9 @@ import pandas as pd
 
 from gaia_clusters.cluster import features, hdbscan_runs
 from gaia_clusters.predict import predict_share
-from gaia_clusters.region import REGIONS
-from gaia_clusters.score import score, unmatched
+from gaia_clusters.region import REGIONS, SETUP
+from gaia_clusters.score import how_missed, score, shown_run, unmatched
 
-# Per region: each selection method with its standing under that region's protocol (the protocol's
-# own first), the clusters named on the sky map and drawn as colour-magnitude diagrams (the three
-# richest in Hunt & Reffert for Carina), and the region whose leaf rates predict this one.
-SETUP = {
-    "auriga": {"methods": {"eom": "Protocol: excess of mass (library default)", "leaf": "Post hoc: leaf selection"},
-               "named": {"NGC_1960": "M36", "NGC_2099": "M37", "NGC_1912": "M38"}},
-    "carina": {"methods": {"leaf": "Protocol: leaf selection", "eom": "Secondary: excess of mass (library default)"},
-               "named": {"NGC_3532": "NGC 3532", "IC_2714": "IC 2714", "Trumpler_19": "Trumpler 19"},
-               "predicted_from": "auriga"},
-}
 SIZES = [10, 20, 40, 80]
 DISTANCE = pd.IntervalIndex.from_breaks([0, 1000, 2000, 3000, np.inf], closed="left")
 DISTANCE_LABELS = ["< 1 kpc", "1–2 kpc", "2–3 kpc", "≥ 3 kpc"]
@@ -101,16 +91,6 @@ def prediction(table: pd.DataFrame) -> list[str]:
             f"**{mean:.1%}**, 95 % range {lo:.1%} to {hi:.1%}."]
 
 
-def failure(r: pd.Series) -> str:
-    """How a missed cluster fails, judged on the run that came closest (highest min(recovery, purity))."""
-    k = max(SIZES, key=lambda k: min(r[f"recovery_{k}"], r[f"purity_{k}"]))
-    if r[f"recovery_{k}"] > 0.5:
-        return "inside a bigger group (purity ≤ 0.5)"
-    if r[f"purity_{k}"] > 0.5:
-        return "only partly found (recovery ≤ 0.5)"
-    return "not found"
-
-
 def summary(table: pd.DataFrame, labels: pd.DataFrame) -> list[str]:
     rec = table[table.recoverable]
     lines = [f"**{share(rec)} recovered by at least one run.**", "",
@@ -135,7 +115,7 @@ def summary(table: pd.DataFrame, labels: pd.DataFrame) -> list[str]:
     if len(missed):
         lines += ["", "| How the missed clusters fail (closest run) | Clusters | Median members in our sample |",
                   "|---|---|---|"]
-        for how, g in missed.groupby(missed.apply(failure, axis=1)):
+        for how, g in missed.groupby(missed.apply(how_missed, axis=1, sizes=SIZES)):
             lines.append(f"| {how} | {len(g)} | {int(g.n.median())} |")
     return lines
 
@@ -217,7 +197,7 @@ ref_ids = members.groupby("Name").GaiaDR3.apply(set)
 fig, axes = plt.subplots(1, len(picks), figsize=(3.6 * len(picks), 4.2))
 for a, cl in zip(np.atleast_1d(axes), picks):
     r = t.loc[cl]
-    k = max(SIZES, key=lambda k: (r[f"recovered_{k}"], r[f"recovery_{k}"] * r[f"purity_{k}"]))
+    k = shown_run(r, SIZES)
     ours = stars[lab[str(k)].to_numpy() == r[f"label_{k}"]] if r[f"label_{k}"] >= 0 else stars.iloc[:0]
     theirs = ours.Source.isin(ref_ids.get(cl, set()))
     a.scatter(ours["BP-RP"][theirs], ours.Gmag[theirs], s=4, c=RECOVERED, label="also in Hunt & Reffert")

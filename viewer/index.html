@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>gaia-clusters</title>
+<meta name="description" content="Open clusters recovered from Gaia DR3 with HDBSCAN, scored against Hunt & Reffert (2023), in three dimensions.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='%231f3b73'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="main.js"></script>
+</head>
+<body>
+<header class="wrap top">
+<a class="brand" href="./">gaia-clusters</a>
+<nav aria-label="Regions and links">
+<div class="regions" role="group" aria-label="Region">
+<button type="button" data-region="carina">Carina</button><button type="button" data-region="auriga">Auriga</button>
+</div>
+<a href="https://github.com/abp002/gaia-clusters#readme">README</a>
+<a href="https://github.com/abp002/gaia-clusters">GitHub</a>
+</nav>
+</header>
+
+<main class="wrap">
+<div class="intro">
+<h1 id="title">Open clusters in Gaia DR3</h1>
+<p class="lede" id="lede">Stars born together share position, distance and motion. HDBSCAN finds them as dense clumps in Gaia DR3; the catalogue of Hunt &amp; Reffert (2023) says which ones it should have found.</p>
+</div>
+
+<figure class="figure" id="figure">
+<figcaption class="legend">
+<span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="2" fill="#9a9a9a"/></svg>field star, at its own distance</span>
+<span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="4" fill="#1f3b73"/></svg>member of a recovered cluster</span>
+<span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#c8553d" stroke-width="1.6"/></svg>missed cluster, at its catalogue position</span>
+<span class="unverified-key" hidden><svg width="12" height="12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" fill="none" stroke="#6b6b67" stroke-width="1.4"/></svg>unverified group</span>
+</figcaption>
+<div class="stage">
+<div class="view" id="view-box">
+<canvas id="view" role="img" aria-label="Three-dimensional map of the region: field stars in grey, members of recovered clusters in blue, missed clusters as red rings. Use the list below the map to open any cluster."></canvas>
+<div class="labels" id="labels" aria-hidden="true"></div>
+<p class="hint mono" id="hint">Drag to turn · scroll or pinch to zoom · right-drag or two fingers to pan</p>
+</div>
+<aside class="card" id="card" aria-live="polite"></aside>
+</div>
+<div class="controls">
+<label class="find"><span>Find a cluster</span><select id="find"></select></label>
+<label class="toggle"><input type="checkbox" id="unverified"><span id="unverified-label">Show unverified groups</span></label>
+<span class="field-status mono" id="field-status"></span>
+<button type="button" class="more" id="more" hidden>Load every star</button>
+</div>
+</figure>
+
+<section id="method">
+<h2>How to read it</h2>
+<div class="notes">
+<div>
+<h3>Where things sit</h3>
+<p>Each grey star is at its distance from <a href="https://doi.org/10.3847/1538-3881/abd806">Bailer-Jones et al. (2021)</a>, not at one over its parallax, which is biased when the parallax is uncertain. The Sun is at the tip of the wedge, and the arcs mark every kiloparsec.</p>
+<p>The members of a recovered cluster sit at the cluster's distance in Hunt &amp; Reffert. <span id="depth-region">In these regions</span>, a member's own distance is uncertain by <span id="depth-sigma">about 100 pc</span> (median), while half of a cluster's members sit within <span id="depth-r50">about 3 pc</span> of its centre (median). At their own distances, clusters would turn into needles pointing at the Sun. So a cluster's depth is not shown: seen side-on, it is flat.</p>
+</div>
+<div>
+<h3>What is drawn</h3>
+<p>A recovered cluster is the group of the HDBSCAN run that recovers it best, with the highest recovery × purity. A missed cluster is a ring at its catalogue position, sized by its members in our sample. Its card shows the run that came closest.</p>
+<p>The colour-magnitude diagram in each card shows the group's stars that Hunt &amp; Reffert also list (blue), the group's other stars (red) and the members it misses (grey). Blue against red is purity; blue against grey, recovery.</p>
+<p>The groups that no Hunt &amp; Reffert cluster owns are hidden unless you ask for them. Without a significance test they are not clusters.</p>
+</div>
+<div>
+<h3>Level of detail</h3>
+<p>The field is stored in random order and sent in nested levels: 65,536 stars, then twice as many each time. Every level is a uniform sample of the field, so the page shows the first one at once, adds the rest as they arrive, and draws fewer stars while the view moves.</p>
+<p>This is not a discovery: Hunt &amp; Reffert ran the same method on the same data. The score and how it was fixed in advance are in the <a href="https://github.com/abp002/gaia-clusters#readme">README</a>.</p>
+</div>
+</div>
+</section>
+</main>
+
+<footer>
+<div class="wrap">
+<span>Gaia DR3 (ESA) through the GAVO Data Center · Hunt &amp; Reffert (2023) and Bailer-Jones et al. (2021)</span>
+<a href="https://github.com/abp002/gaia-clusters">github.com/abp002/gaia-clusters</a>
+</div>
+</footer>
+</body>
+</html>
