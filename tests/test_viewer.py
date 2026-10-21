@@ -64,7 +64,7 @@ def region():
     labels.loc[free, "10"] = 2
     members = pd.DataFrame({"Name": ["A"] * 40 + ["B"] * 20, "GaiaDR3": stars.Source.to_numpy()[np.r_[a, b]]})
     table = pd.DataFrame({"GLON": [175.0, 177.0], "GLAT": [1.0, -2.0], "dist50": [1500.0, 2500.0],
-                          "reliable": [True, False]}, index=pd.Index(["A", "B"], name="Name"))
+                          "reliable": [True, False], "rtpc": [8.0, 12.5]}, index=pd.Index(["A", "B"], name="Name"))
     for k in SIZES:
         s = score(stars.Source, labels[str(k)], members, table.index).set_index("Name")
         table["n"], table["recoverable"] = s.n, s.recoverable
@@ -79,6 +79,7 @@ def test_the_written_files_draw_every_star_once_and_in_the_right_place(tmp_path)
     meta = write(tmp_path, build(stars, labels, members, table, {}, unverified_run=10), {"region": "test"})
     a, b = meta["clusters"]
     assert (a["recovered"], b["recovered"], b["how"]) == (True, False, "inside a bigger group (purity ≤ 0.5)")
+    assert (a["radius"], b["radius"]) == (8.0, 12.5)
 
     raw = (tmp_path / "members.bin").read_bytes()
     m = meta["members"]["count"]

@@ -58,7 +58,7 @@ def build(stars: pd.DataFrame, labels: pd.DataFrame, members: pd.DataFrame, tabl
 
     `stars` needs Source, GLON, GLAT, Gmag, BP-RP and r_med_geo (Bailer-Jones); `labels` the leaf runs,
     one column per min_cluster_size, row for row with `stars`; `members` the Hunt & Reffert members in
-    the region; `table` score_region's table, indexed by name. A recovered cluster's group, from the run
+    the region; `table` score_region's table, indexed by name, with Hunt & Reffert's tidal radius (rtpc). A recovered cluster's group, from the run
     it is shown with, is drawn at the cluster's catalogue distance: a member's own distance is uncertain
     by far more than the cluster is big. Every other star is field, at its own distance.
     """
@@ -80,7 +80,7 @@ def build(stars: pd.DataFrame, labels: pd.DataFrame, members: pd.DataFrame, tabl
             "reliable": bool(r.reliable), "dist": round(float(r.dist50)), "n": int(r.n), "run": k,
             "size": len(group), "recovery": float(r[f"recovery_{k}"]), "purity": float(r[f"purity_{k}"]),
             "runs": [s for s in sizes if r[f"recovered_{s}"]], "how": None if r.recovered else how_missed(r, sizes),
-            "xyz": heliocentric(r.GLON, r.GLAT, r.dist50)[0]})
+            "radius": float(r.rtpc), "xyz": heliocentric(r.GLON, r.GLAT, r.dist50)[0]})
 
     owner = owners(groups, len(stars))
     recovered = [i for i, c in enumerate(clusters) if c["recovered"]]
@@ -139,7 +139,7 @@ def write(out: Path, built: dict, summary: dict) -> dict:
                                   + np.round(built["cmd_g"] * 1000).astype("<u2").tobytes()
                                   + built["cmd_cat"].astype("u1").tobytes())
     clusters = [c | {"xyz": [round(float(v), 1) for v in c["xyz"]], "recovery": round(c["recovery"], 3),
-                     "purity": round(c["purity"], 3)} for c in built["clusters"]]
+                     "purity": round(c["purity"], 3), "radius": round(c["radius"], 1)} for c in built["clusters"]]
     meta = summary | {
         "stars": built["stars"], "reach": round(built["reach"]),
         "quant": {"lo": lo.tolist(), "hi": hi.tolist()},

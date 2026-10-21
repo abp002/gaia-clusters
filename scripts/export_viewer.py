@@ -23,7 +23,8 @@ stars = pd.read_parquet(data / f"{name}_stars.parquet").merge(
 labels = pd.read_parquet(data / f"{name}_labels_leaf.parquet")
 assert (labels.Source.to_numpy() == stars.Source.to_numpy()).all()
 members = pd.read_parquet(data / f"{name}_hr23_members.parquet")
-table = pd.read_csv(Path("results") / f"{name}_scores_leaf.csv", index_col="Name")
+catalogue = pd.read_parquet(data / "hr23_clusters.parquet").set_index("Name")
+table = pd.read_csv(Path("results") / f"{name}_scores_leaf.csv", index_col="Name").join(catalogue.rtpc)
 
 built = build(stars, labels.drop(columns="Source"), members, table, SETUP[name]["named"], UNVERIFIED_RUN)
 scored = table[table.recoverable]
@@ -40,7 +41,6 @@ if protocol != "leaf":  # the leaf runs are post hoc here: the page says what th
 # Why members sit at their cluster's distance: how uncertain a member's own distance is, against how big
 # a cluster is (Hunt & Reffert's radius holding half the members), both medians over recovered clusters
 half_width = ((stars.r_hi_geo - stars.r_lo_geo) / 2).to_numpy()
-catalogue = pd.read_parquet(data / "hr23_clusters.parquet").set_index("Name")
 summary["depth"] = {"sigma": round(float(np.median(half_width[built["member_index"]]))),
                     "r50": round(float(catalogue.r50pc.reindex(scored.index[scored.recovered]).median()), 1)}
 summary["named"] = list(SETUP[name]["named"])

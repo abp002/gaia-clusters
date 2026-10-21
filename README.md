@@ -145,11 +145,11 @@ Full tables in [results/carina.md](results/carina.md), one row per cluster in `r
 
 ## In three dimensions
 
-The viewer in [viewer/](viewer/) shows both regions in space, seen from outside the wedge that each
+The viewer in [viewer/](viewer/) shows both regions in space, seen from above the wedge that each
 one fills from the Sun: the field, the recovered clusters and the missed ones. Each cluster has a
 card with its distance, recovery, purity and colour-magnitude diagram.
 
-![The viewer: Carina's wedge seen from beside the Sun, with Trumpler 19 selected](figures/viewer.png)
+![The viewer: Carina's wedge seen from above, with Trumpler 19 selected](figures/viewer.png)
 
 - **Field stars sit at their own distance**, the geometric one of
   [Bailer-Jones et al. (2021)](https://doi.org/10.3847/1538-3881/abd806), not at one over the
@@ -160,9 +160,11 @@ card with its distance, recovery, purity and colour-magnitude diagram.
   Carina and 85 pc in Auriga (median), while half of a cluster's members sit within 3.2 and 3.6 pc
   of its centre (median `r50pc`). At their own distances, clusters would be needles some 25 times
   longer than wide, pointing at the Sun. The cost: depth is not shown, and seen side-on a cluster is
-  flat.
-- A recovered cluster is drawn with the group of the run that recovers it best (highest recovery ×
-  purity), and a missed one as a ring at its catalogue position. In the colour-magnitude diagram,
+  flat. So a cluster's members only show when you point at it.
+- A cluster is drawn at its catalogue position, as wide as its tidal radius in Hunt & Reffert
+  (`rtpc`) and never smaller than a few pixels: a sphere if it was recovered, a ring if it was
+  missed. Pointing at a sphere swaps it for the group of the run that recovers it best (highest
+  recovery × purity). In the colour-magnitude diagram,
   blue stars are in both our group and Hunt & Reffert, red only in our group and grey only in
   Hunt & Reffert: blue against red is purity, blue against grey is recovery.
 - The groups that no Hunt & Reffert cluster owns (2,109 in Carina's min_cluster_size 10 run, 494 in

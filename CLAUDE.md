@@ -29,7 +29,8 @@ Issues: abp002/gaia-clusters
   member's own distance is ~25 times more uncertain than a cluster is big (decision in the README).
   The field is shuffled once (seed 0) and cut into nested levels of 65,536 × 2^k stars, quantized to
   uint16 between `quant.lo` and `quant.hi`; members are float32 (quantization steps show up close).
-- `viewer/`: static page, three.js 0.170 from jsdelivr, no build step. The field is rendered as a
+- `viewer/`: static page, three.js 0.170 from jsdelivr, no build step. Clusters are spheres (instanced,
+  tidal radius `rtpc`, at least 4 CSS px, resized every frame in `drawSpheres`). The field is rendered as a
   density (stars per pixel counted in a half-float buffer, shown in grey on a log scale). `viewer/data/`
   is committed: Pages cannot rebuild it, since it needs `data/`. `.github/workflows/pages.yml` deploys
   `viewer/` and skips while the repo is private.

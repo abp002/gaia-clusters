@@ -11,6 +11,7 @@ const coarse = matchMedia('(pointer: coarse)').matches;
 const BUDGET = coarse ? 600_000 : Infinity;  // field stars loaded before asking
 const MOVING = coarse ? 250_000 : 700_000;   // field stars drawn while the view moves
 const DARKEST = 400;                         // field stars per pixel drawn in the darkest grey
+const MIN_RADIUS = 4;                        // CSS pixels: no cluster is drawn smaller than this
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const RAD = Math.PI / 180;
 const num = new Intl.NumberFormat('en-GB').format;
@@ -70,24 +71,28 @@ const tone = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMater
 tone.frustumCulled = false;
 tone.renderOrder = -1;
 scene.add(tone);
-// `hi` is the highlighted cluster or group: drawn in ink and a little bigger
+// Drawing-buffer pixels per parsec at one parsec from the camera: for things drawn at their size in parsecs
+const proj = { value: 1 };
+// `hi` is the highlighted cluster or group, drawn in ink. A recovered cluster shows its members only then,
+// in place of its sphere
 const memberMaterial = new THREE.ShaderMaterial({
-  uniforms: { size: { value: 3.2 * dpr }, color: { value: new THREE.Color(HEX.recovered) },
-              ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 } },
-  vertexShader: `uniform float size; uniform float hi; attribute float cluster; varying float vHi;
-    void main() { vHi = abs(cluster - hi) < 0.5 ? 1.0 : 0.0;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = size * (1.0 + 0.3 * vHi); }`,
-  fragmentShader: `uniform vec3 color; uniform vec3 ink; varying float vHi;
-    void main() { vec2 c = gl_PointCoord - 0.5; if (dot(c, c) > 0.25) discard; gl_FragColor = vec4(mix(color, ink, vHi), 1.0); }`,
-  transparent: true,
+  uniforms: { size: { value: 3.2 * dpr }, ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 } },
+  vertexShader: `uniform float size; uniform float hi; attribute float cluster;
+    void main() { gl_Position = abs(cluster - hi) < 0.5 ? projectionMatrix * modelViewMatrix * vec4(position, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
+      gl_PointSize = size; }`,
+  fragmentShader: `uniform vec3 ink;
+    void main() { vec2 c = gl_PointCoord - 0.5; if (dot(c, c) > 0.25) discard; gl_FragColor = vec4(ink, 1.0); }`,
+  transparent: true, depthTest: false,
 });
+const sphereMaterial = new THREE.MeshLambertMaterial({ color: HEX.recovered });
 const ringMaterial = new THREE.ShaderMaterial({
   uniforms: { color: { value: new THREE.Color(HEX.missed) }, ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 },
-              line: { value: 1.6 * dpr }, scale: { value: dpr } },
-  vertexShader: `uniform float hi; uniform float scale; attribute float size; attribute float idx;
+              line: { value: 1.2 * dpr }, scale: { value: dpr }, proj, least: { value: 2 * MIN_RADIUS * dpr } },
+  vertexShader: `uniform float hi; uniform float scale; uniform float proj; uniform float least; attribute float radius; attribute float idx;
     varying float vHi; varying float vSize;
-    void main() { vHi = abs(idx - hi) < 0.5 ? 1.0 : 0.0; vSize = size * scale * (1.0 + 0.3 * vHi);
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = vSize; }`,
+    void main() { vHi = abs(idx - hi) < 0.5 ? 1.0 : 0.0; vec4 p = modelViewMatrix * vec4(position, 1.0);
+      vSize = max(least, 2.0 * radius * proj / -p.z) + 2.0 * scale * vHi;
+      gl_Position = projectionMatrix * p; gl_PointSize = vSize; }`,
   fragmentShader: `uniform vec3 color; uniform vec3 ink; uniform float line; varying float vHi; varying float vSize;
     void main() { float r = length(gl_PointCoord - 0.5) * vSize, w = line * (1.0 + vHi);
       if (r > 0.5 * vSize || r < 0.5 * vSize - w) discard; gl_FragColor = vec4(mix(color, ink, vHi), 1.0); }`,
@@ -169,14 +174,21 @@ function build(name, meta, membersBuf, cmdBuf, get) {
   const mg = new THREE.BufferGeometry();
   mg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   mg.setAttribute('cluster', new THREE.BufferAttribute(cluster, 1));
-  group.add(points(mg, memberMaterial, 3));
+  group.add(points(mg, memberMaterial, 6));
   region.members = { pos, cluster };
 
-  // Missed clusters: rings at the catalogue position, as wide as on the README's sky maps
+  // Recovered clusters: spheres as wide as the cluster in Hunt & Reffert (its tidal radius), but never
+  // smaller than a few pixels. drawSpheres() sizes them every frame
+  region.found = meta.clusters.flatMap((c, i) => c.members ? [i] : []);
+  region.spheres = new THREE.InstancedMesh(sphereGeometry, sphereMaterial, region.found.length);
+  region.spheres.frustumCulled = false;
+  group.add(region.spheres);
+
+  // Missed clusters: rings at the catalogue position, sized the same way
   const missed = meta.clusters.map((c, i) => [c, i]).filter(([c]) => !c.recovered);
   const rg = new THREE.BufferGeometry();
   rg.setAttribute('position', new THREE.Float32BufferAttribute(missed.flatMap(([c]) => c.xyz), 3));
-  rg.setAttribute('size', new THREE.Float32BufferAttribute(missed.map(([c]) => ringSize(c)), 1));
+  rg.setAttribute('radius', new THREE.Float32BufferAttribute(missed.map(([c]) => c.radius), 1));
   rg.setAttribute('idx', new THREE.Float32BufferAttribute(missed.map(([, i]) => i), 1));
   group.add(points(rg, ringMaterial, 4));
   region.missed = missed.map(([, i]) => i);
@@ -204,21 +216,38 @@ function build(name, meta, membersBuf, cmdBuf, get) {
   return region;
 }
 
-const ringSize = (c) => 7 + 1.1 * Math.sqrt(c.n);
+const sphereGeometry = new THREE.SphereGeometry(1, 32, 16);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a87, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+sun.position.set(-1, 1, 3);
+scene.add(sun);
 
-// The wedge the region fills, seen from the Sun: its four edges and an arc every kiloparsec
+const inView = new THREE.Vector3();
+const depth = (xyz) => -inView.fromArray(xyz).applyMatrix4(camera.matrixWorldInverse).z;
+// A cluster's radius on screen, in CSS pixels
+const screenRadius = (c) => Math.max(MIN_RADIUS, c.radius * proj.value / dpr / Math.max(depth(c.xyz), 1e-3));
+
+const scaled = new THREE.Matrix4();
+function drawSpheres() {
+  const on = hovered ?? pinned;
+  R.found.forEach((i, k) => {
+    const c = R.meta.clusters[i], d = depth(c.xyz);  // behind the camera (d < 0), at its own size
+    const r = on?.kind === 'cluster' && on.i === i ? 0 : Math.max(c.radius, MIN_RADIUS * dpr * d / proj.value);
+    R.spheres.setMatrixAt(k, scaled.makeScale(r, r, r).setPosition(...c.xyz));
+  });
+  R.spheres.instanceMatrix.needsUpdate = true;
+}
+
+// The Galactic plane under the wedge: a ray every 2° of longitude from the Sun, an arc every half kiloparsec
 function guides(region) {
-  const { box: { l: [l0, l1], b: [b0, b1] }, reach } = region.meta;
+  const { box: { l: [l0, l1] }, reach } = region.meta;
   const far = Math.ceil(reach / 1000) * 1000, steps = 40, pts = [];
   const arc = (b, d) => {
     for (let s = 0; s < steps; s++) pts.push(toward(l0 + (l1 - l0) * s / steps, b, d), toward(l0 + (l1 - l0) * (s + 1) / steps, b, d));
   };
-  for (const [l, b] of [[l0, b0], [l0, b1], [l1, b0], [l1, b1]]) pts.push(new THREE.Vector3(), toward(l, b, far));
-  for (const l of [l0, l1]) pts.push(toward(l, b0, far), toward(l, b1, far));
-  arc(b0, far);
-  arc(b1, far);
+  for (let l = l0; l <= l1 + 1e-9; l += 2) pts.push(new THREE.Vector3(), toward(l, 0, far));
+  for (let d = 500; d <= far; d += 500) arc(0, d);
   for (let d = 1000; d <= far; d += 1000) {
-    arc(0, d);
     label(region, `${d / 1000} kpc`, toward(l1, 0, d), 'scale', d);  // frame() moves it to the edge in front
   }
   label(region, 'Sun', new THREE.Vector3(), 'scale');
@@ -257,16 +286,15 @@ function clear() {
   R = null;
 }
 
-// The whole wedge in view, seen from behind the Sun, to one side and above, so the wedge recedes from
-// the Sun at the bottom left; on a tall screen, from above with the Sun at the bottom. The distance
-// labels go on the edge nearest the viewer.
+// The whole wedge in view from above, tilted a little so it reads as a solid, with the Sun at the left;
+// on a tall screen, with the Sun at the bottom. The distance labels go on the edge nearest the viewer.
 function frame(region) {
   const { box: { l: [l0, l1], b: [b0, b1] }, reach } = region.meta;
   camera.aspect = box.clientWidth / box.clientHeight;
   camera.updateProjectionMatrix();
   const lc = (l0 + l1) / 2, far = Math.ceil(reach / 1000) * 1000, tall = camera.aspect < 0.9;
   const axis = toward(lc, 0, 1), side = toward(lc + 90, 0, 1), north = new THREE.Vector3(0, 0, 1);
-  const corners = [[l0, b0], [l0, b1], [l1, b0], [l1, b1]];
+  const corners = [[l0, b0], [l0, b1], [l1, b0], [l1, b1]], edges = [[l0, 0], [l1, 0]];
   const hull = [new THREE.Vector3(), ...corners.map(([l, b]) => toward(l, b, far))];
   const target = axis.clone().multiplyScalar(0.45 * far), right = new THREE.Vector3(), up = new THREE.Vector3();
   const place = (dir, distance) => {
@@ -279,11 +307,11 @@ function frame(region) {
   let dir;
   for (const sign of [1, -1]) {
     dir = (tall ? axis.clone().multiplyScalar(-0.3).addScaledVector(side, 0.15 * sign).addScaledVector(north, 0.94)
-                : axis.clone().multiplyScalar(-0.35).addScaledVector(side, 0.85 * sign).addScaledVector(north, 0.55)).normalize();
+                : axis.clone().multiplyScalar(-0.02).addScaledVector(side, 0.12 * sign).addScaledVector(north, 0.99)).normalize();
     place(dir, far);
     if ((tall ? up : right).dot(axis) > 0) break;
   }
-  // Fit: the distance at which the wedge fills 88 % of the view, then centre it, twice over
+  // Fit: the distance at which the wedge fills 94 % of the view, then centre it, twice over
   const extent = () => {
     const ndc = hull.map((v) => v.clone().project(camera));
     const xs = ndc.map((v) => v.x), ys = ndc.map((v) => v.y);
@@ -296,7 +324,7 @@ function frame(region) {
       distance = (lo + hi) / 2;
       place(dir, distance);
       const e = extent();
-      if (Math.max(-e.x[0], e.x[1], -e.y[0], e.y[1]) > 0.88) lo = distance; else hi = distance;
+      if (Math.max(-e.x[0], e.x[1], -e.y[0], e.y[1]) > 0.94) lo = distance; else hi = distance;
     }
     const e = extent(), half = distance * Math.tan(camera.fov * RAD / 2);
     target.addScaledVector(right, (e.x[0] + e.x[1]) / 2 * half * camera.aspect).addScaledVector(up, (e.y[0] + e.y[1]) / 2 * half);
@@ -305,7 +333,7 @@ function frame(region) {
   controls.target.copy(target);
   controls.update();
   const screen = ([l, b]) => toward(l, b, far).project(camera);
-  const [l, b] = corners.sort((p, q) => tall ? screen(q).x - screen(p).x : screen(p).y - screen(q).y)[0];
+  const [l, b] = edges.sort((p, q) => tall ? screen(q).x - screen(p).x : screen(p).y - screen(q).y)[0];
   for (const lab of region.labels) if (lab.distance) lab.at.copy(toward(l, b, lab.distance));
   needs = true;
 }
@@ -346,7 +374,7 @@ function fly() {
   if (t === 1) flight = null;
 }
 
-// What is under the pointer: the nearest member on screen, a ring, or (if shown) an unverified group
+// What is under the pointer: a sphere, a ring, or (if shown) an unverified group
 const viewProj = new THREE.Matrix4();
 function pick(px, py) {
   if (!R) return null;
@@ -361,16 +389,9 @@ function pick(px, py) {
   };
   let best = null, bestD = Infinity;
   const consider = (d, reach, hit) => { if (d < reach * reach && d < bestD) { bestD = d; best = hit; } };
-  const { pos, cluster } = R.members;
-  let nearest = -1, nearestD = Infinity;
-  for (let j = 0; j < cluster.length; j++) {
-    const d = dist2(pos[3 * j], pos[3 * j + 1], pos[3 * j + 2]);
-    if (d < nearestD) { nearestD = d; nearest = j; }
-  }
-  if (nearest >= 0) consider(nearestD, 9, { kind: 'cluster', i: cluster[nearest] });
-  for (const i of R.missed) {
+  for (const i of [...R.found, ...R.missed]) {
     const c = R.meta.clusters[i];
-    consider(dist2(...c.xyz), ringSize(c) / 2 + 4, { kind: 'cluster', i });
+    consider(dist2(...c.xyz), screenRadius(c) + 4, { kind: 'cluster', i });
   }
   if (R.unverified.visible) {
     const u = R.meta.unverified.xyz;
@@ -422,7 +443,7 @@ function showCard(hit) {
 function emptyCard() {
   const m = R.meta;
   return `<p class="kicker">${esc(m.title)}</p>
-    <p>Point at a blue cluster or a red ring, or tap it, for its card. Every cluster is also in the list under the map.</p>
+    <p>Point at a blue sphere or a red ring, or tap it, for its card. Every cluster is also in the list under the map.</p>
     <dl class="facts"><dt>Recovered</dt><dd>${m.recovered} of ${m.recoverable} (${pct(m.recovered / m.recoverable)})</dd>
     <dt>Highly reliable</dt><dd>${m.reliable_recovered} of ${m.reliable} (${pct(m.reliable_recovered / m.reliable)})</dd>
     <dt>Missed</dt><dd>${m.recoverable - m.recovered}</dd><dt>Field stars</dt><dd>${num(m.field.count)}</dd></dl>`;
@@ -568,6 +589,7 @@ new ResizeObserver(() => {
   const w = box.clientWidth, h = box.clientHeight;
   renderer.setSize(w, h, false);
   const size = renderer.getDrawingBufferSize(tone.material.uniforms.size.value);
+  proj.value = size.y / (2 * Math.tan(camera.fov * RAD / 2));
   density.setSize(size.x, size.y);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -588,6 +610,7 @@ function draw() {
     if (p.visible) drawn += p.geometry.attributes.position.count;
   }
   tone.material.uniforms.gain.value = R.meta.field.count / Math.max(drawn, 1);  // each star drawn stands for this many
+  drawSpheres();
   renderer.setRenderTarget(density);
   renderer.setClearColor(0x000000, 0);
   renderer.render(fieldScene, camera);

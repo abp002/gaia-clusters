@@ -44,7 +44,7 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 26px; font-family: var(--mono); font-size: 13px; color: var(--muted); margin-bottom: 14px; }
 .legend span { display: inline-flex; align-items: center; gap: 8px; }
 .stage { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 0; border: 1px solid var(--ink); }
-.view { position: relative; height: clamp(420px, 72vh, 820px); min-width: 0; overflow: hidden; cursor: grab; touch-action: none; }
+.view { position: relative; height: clamp(380px, 54vh, 600px); min-width: 0; overflow: hidden; cursor: grab; touch-action: none; }
 .view:active { cursor: grabbing; }
 .view.pointing { cursor: pointer; }
 .view canvas { display: block; width: 100%; height: 100%; }
@@ -55,7 +55,7 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 .labels .named { font-weight: 500; }
 .hint { position: absolute; left: 12px; top: 10px; margin: 0; font-size: 11px; color: var(--faint); pointer-events: none; }
 
-.card { border-left: 1px solid var(--ink); padding: 18px 18px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; overflow-y: auto; max-height: clamp(420px, 72vh, 820px); }
+.card { border-left: 1px solid var(--ink); padding: 18px 18px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; overflow-y: auto; max-height: clamp(380px, 54vh, 600px); }
 .card h3 { margin: 0; font-size: 26px; line-height: 1.05; font-weight: 700; letter-spacing: -0.01em; }
 .card .alias { display: block; margin-top: 4px; font: 12px var(--mono); color: var(--faint); }
 .card .kicker { margin: 0; font: 500 12px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }

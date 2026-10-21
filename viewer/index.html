@@ -40,13 +40,13 @@
 <figure class="figure" id="figure">
 <figcaption class="legend">
 <span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="2" fill="#9a9a9a"/></svg>field star, at its own distance</span>
-<span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="4" fill="#1f3b73"/></svg>member of a recovered cluster</span>
-<span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#c8553d" stroke-width="1.6"/></svg>missed cluster, at its catalogue position</span>
+<span><svg width="14" height="14" aria-hidden="true"><defs><radialGradient id="ball" cx="0.35" cy="0.35" r="0.7"><stop offset="0" stop-color="#4a68a3"/><stop offset="1" stop-color="#1f3b73"/></radialGradient></defs><circle cx="7" cy="7" r="5.5" fill="url(#ball)"/></svg>recovered cluster</span>
+<span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#c8553d" stroke-width="1.2"/></svg>missed cluster</span>
 <span class="unverified-key" hidden><svg width="12" height="12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" fill="none" stroke="#6b6b67" stroke-width="1.4"/></svg>unverified group</span>
 </figcaption>
 <div class="stage">
 <div class="view" id="view-box">
-<canvas id="view" role="img" aria-label="Three-dimensional map of the region: field stars in grey, members of recovered clusters in blue, missed clusters as red rings. Use the list below the map to open any cluster."></canvas>
+<canvas id="view" role="img" aria-label="Three-dimensional map of the region: field stars in grey, recovered clusters as blue spheres, missed clusters as red rings. Use the list below the map to open any cluster."></canvas>
 <div class="labels" id="labels" aria-hidden="true"></div>
 <p class="hint mono" id="hint">Drag to turn · scroll or pinch to zoom · right-drag or two fingers to pan</p>
 </div>
@@ -70,7 +70,7 @@
 </div>
 <div>
 <h3>What is drawn</h3>
-<p>A recovered cluster is the group of the HDBSCAN run that recovers it best, with the highest recovery × purity. A missed cluster is a ring at its catalogue position, sized by its members in our sample. Its card shows the run that came closest.</p>
+<p>A cluster is drawn at its catalogue position, as wide as its tidal radius in Hunt &amp; Reffert, and never smaller than a few pixels: a sphere if HDBSCAN recovered it, a ring if not. Point at a sphere and it turns into its stars: the group of the HDBSCAN run that recovers it best, with the highest recovery × purity. A missed cluster's card shows the run that came closest.</p>
 <p>The colour-magnitude diagram in each card shows the group's stars that Hunt &amp; Reffert also list (blue), the group's other stars (red) and the members it misses (grey). Blue against red is purity; blue against grey, recovery.</p>
 <p>The groups that no Hunt &amp; Reffert cluster owns are hidden unless you ask for them. Without a significance test they are not clusters.</p>
 </div>
