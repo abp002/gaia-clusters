@@ -21,13 +21,10 @@ import pandas as pd
 from gaia_clusters.cluster import features, hdbscan_runs
 from gaia_clusters.predict import predict_share
 from gaia_clusters.region import REGIONS, SETUP
-from gaia_clusters.score import how_missed, score, shown_run, unmatched
+from gaia_clusters.score import (DISTANCE, DISTANCE_LABELS, MEMBERS, MEMBERS_LABELS, how_missed, score, shown_run,
+                                  unmatched)
 
 SIZES = [10, 20, 40, 80]
-DISTANCE = pd.IntervalIndex.from_breaks([0, 1000, 2000, 3000, np.inf], closed="left")
-DISTANCE_LABELS = ["< 1 kpc", "1–2 kpc", "2–3 kpc", "≥ 3 kpc"]
-MEMBERS = pd.IntervalIndex.from_breaks([10, 30, 100, np.inf], closed="left")
-MEMBERS_LABELS = ["10–29", "30–99", "≥ 100"]
 INK, RECOVERED, MISSED, FIELD = "#222222", "#1f3b73", "#c8553d", "#9a9a9a"
 METHOD_COLOUR = {"eom": "#8a8a8a", "leaf": RECOVERED}
 

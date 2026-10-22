@@ -321,16 +321,41 @@ function drawSpheres() {
   R.spheres.instanceMatrix.needsUpdate = true;
 }
 
+// Recovery by bin, every region side by side: horizontal bars, one colour per region in the buttons' order
+const REGION_HEX = ['#2a78d6', '#eda100'];
+function rateChart(ms, by, title) {
+  const bins = ms[0].meta.rates[by].map((r) => r.bin), bar = 12, gap = 2, band = ms.length * (bar + gap) + 14;
+  const W = 460, L = 74, Rm = 128, T = 8, H = T + bins.length * band + 22, sx = (v) => L + v * (W - L - Rm);
+  const grid = [0, 0.5, 1].map((v) => `<line class="grid" x1="${sx(v)}" x2="${sx(v)}" y1="${T}" y2="${H - 22}"/>
+    <text x="${sx(v)}" y="${H - 6}" text-anchor="middle">${v * 100} %</text>`).join('');
+  const rows = bins.map((b, i) => {
+    const y = T + i * band;
+    return `<text x="${L - 10}" y="${y + ms.length * (bar + gap) / 2 + 4}" text-anchor="end">${esc(b)}</text>` + ms.map(({ region, meta }, k) => {
+      const { recovered, total } = meta.rates[by][i], share = total ? recovered / total : 0, yb = y + k * (bar + gap);
+      const w = Math.max(0, sx(share) - L), d = w > 4 ? `M${L} ${yb}h${w - 4}a4 4 0 0 1 4 4v${bar - 8}a4 4 0 0 1 -4 4h${-(w - 4)}z` : '';
+      const text = total ? `${pct(share)} · ${recovered} of ${total}` : 'none';
+      return `<g><title>${esc(meta.title)}, ${esc(b)}: ${recovered} of ${total} recovered</title>
+        <path d="${d}" fill="${REGION_HEX[k]}"/><rect x="${L}" y="${yb}" width="${W - L - Rm}" height="${bar}" fill="transparent"/>
+        <text class="value" x="${sx(share) + 6}" y="${yb + bar - 2}">${text}</text></g>`;
+    }).join('');
+  }).join('');
+  return `<figure><figcaption>${title}</figcaption><svg class="rates-chart" viewBox="0 0 ${W} ${H}" role="img"
+    aria-label="${title}: ${bins.map((b, i) => `${b}, ${ms.map(({ meta }) => `${meta.title} ${meta.rates[by][i].recovered} of ${meta.rates[by][i].total}`).join(', ')}`).join('; ')}">${grid}${rows}</svg></figure>`;
+}
+
 // The kiloparsec past the field's 99th percentile and the farthest cluster: some clusters lie beyond the field
 const farEdge = (meta) => Math.ceil(Math.max(meta.reach, ...meta.clusters.map((c) => Math.hypot(...c.xyz))) / 1000) * 1000;
 
 // Where the regions sit in the Milky Way, seen from the north Galactic pole: a schematic disc in kiloparsecs,
 // the centre at the origin and the Sun 8.2 kpc below it. Longitude l points at (−sin l, −cos l) on screen.
 const R0 = 8.2, DISC = 15;
-const wedges = Promise.all([...document.querySelectorAll('[data-region]')].map(async ({ dataset: { region } }) => {
-  const m = await (await fetch(`data/${region}/meta.json`)).json();
-  return { region, l: m.box.l, far: farEdge(m) / 1000 };
-}));
+const metas = Promise.all([...document.querySelectorAll('[data-region]')].map(async ({ dataset: { region } }) =>
+  ({ region, meta: await (await fetch(`data/${region}/meta.json`)).json() })));
+const wedges = metas.then((ms) => ms.map(({ region, meta: m }) => ({ region, l: m.box.l, far: farEdge(m) / 1000 })));
+metas.then((ms) => {
+  $('#rates-key').innerHTML = ms.map(({ meta }, k) => `<span><i style="background:${REGION_HEX[k]}"></i>${esc(meta.title)}</span>`).join('');
+  $('#rates-charts').innerHTML = rateChart(ms, 'distance', 'By the cluster\'s distance') + rateChart(ms, 'members', 'By its members in our sample');
+}).catch(() => { $('#rates').hidden = true; });
 async function galaxy(name) {
   const at = (l, d) => `${(-Math.sin(l * RAD) * d).toFixed(2)} ${(R0 - Math.cos(l * RAD) * d).toFixed(2)}`;
   const shapes = (await wedges).map(({ region, l: [l0, l1], far }) =>

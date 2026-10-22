@@ -175,6 +175,9 @@ card with its distance, recovery, purity and colour-magnitude diagram.
 - **Colour by age** recolours spheres and rings by Hunt & Reffert's median age (`logAge50`) in four
   bands, lighter for younger: under 10 Myr, 10–100 Myr, 0.1–1 Gyr, over 1 Gyr. Shape still tells
   recovered from missed. Each card gives the age with its 16th–84th percentile range.
+- Under the map, **Where it works** charts the recovery rate by distance and by members in our
+  sample, both regions side by side, with the counts. The export writes them into each region's
+  `meta.json` (`rates`) from the scores, with the bins `score_region.py` reports in.
 - The groups that no Hunt & Reffert cluster owns (2,109 in Carina's min_cluster_size 10 run, 494 in
   Auriga's) stay hidden behind a toggle labelled unverified.
 - **Level of detail:** the field is stored in random order and sent in nested levels of 65,536 stars,

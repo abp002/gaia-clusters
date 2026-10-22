@@ -11,7 +11,8 @@ import numpy as np
 import pandas as pd
 
 from gaia_clusters.region import REGIONS, SETUP
-from gaia_clusters.viewer import build, galactic_pm, write
+from gaia_clusters.score import DISTANCE_LABELS, MEMBERS_LABELS
+from gaia_clusters.viewer import build, galactic_pm, rates, write
 
 UNVERIFIED_RUN = 10  # the finest run; the README counts its groups that no Hunt & Reffert cluster owns
 
@@ -34,7 +35,8 @@ summary = {"region": name, "title": name.title(), "standing": SETUP[name]["metho
            "box": {"l": [box.l_min, box.l_max], "b": [box.b_min, box.b_max]},
            "recoverable": len(scored), "recovered": int(scored.recovered.sum()),
            "reliable": int(scored.reliable.sum()), "reliable_recovered": int((scored.reliable & scored.recovered).sum()),
-           "unverified_run": UNVERIFIED_RUN}
+           "unverified_run": UNVERIFIED_RUN,
+           "rates": {"distance": rates(table, "distance", DISTANCE_LABELS), "members": rates(table, "members", MEMBERS_LABELS)}}
 protocol = next(iter(SETUP[name]["methods"]))
 if protocol != "leaf":  # the leaf runs are post hoc here: the page says what the protocol's own runs gave
     first = pd.read_csv(Path("results") / f"{name}_scores_{protocol}.csv")

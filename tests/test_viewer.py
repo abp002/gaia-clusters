@@ -6,7 +6,7 @@ import pytest
 
 from gaia_clusters.score import score
 from gaia_clusters.region import galactic
-from gaia_clusters.viewer import (PM_STEP, build, cmd_stars, drift_reference, galactic_pm, near, heliocentric, level_bounds, owners, quantize,
+from gaia_clusters.viewer import (PM_STEP, build, cmd_stars, drift_reference, galactic_pm, near, rates, heliocentric, level_bounds, owners, quantize,
                                    quantize_pm, write)
 
 SIZES = [10, 20, 40, 80]
@@ -56,6 +56,14 @@ def test_the_field_near_a_cluster_shares_its_patch_and_distance_and_leaves_out_i
     assert near(l, b, d, (100.0, 0.0), 1000, 0.1, exclude=np.array([], int)).tolist() == [0, 5, 6]  # 0.3° at least
     many = near(np.full(1000, 100.0), np.zeros(1000), np.full(1000, 1000.0), (100.0, 0.0), 1000, 4.0, np.array([], int), most=50)
     assert len(many) == 50 and (np.diff(many) > 0).all()
+
+
+def test_rates_count_only_recoverable_clusters_in_every_bin_in_order():
+    table = pd.DataFrame({"recoverable": [True, True, True, False, True], "recovered": [True, False, True, False, False],
+                          "members": ["10–29", "10–29", "≥ 100", "10–29", "≥ 100"]})
+    assert rates(table, "members", ["10–29", "30–99", "≥ 100"]) == [
+        {"bin": "10–29", "recovered": 1, "total": 2}, {"bin": "30–99", "recovered": 0, "total": 0},
+        {"bin": "≥ 100", "recovered": 1, "total": 2}]
 
 
 def test_each_level_doubles_and_the_last_ends_at_the_field():

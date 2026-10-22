@@ -5,6 +5,13 @@ import pandas as pd
 MIN_MEMBERS = 10  # the smallest min_cluster_size: with fewer members in the sample nothing can find it
 
 
+# The bins the scores are reported in, by the cluster's distance (pc) and by its members in our sample
+DISTANCE = pd.IntervalIndex.from_breaks([0, 1000, 2000, 3000, np.inf], closed="left")
+DISTANCE_LABELS = ["< 1 kpc", "1–2 kpc", "2–3 kpc", "≥ 3 kpc"]
+MEMBERS = pd.IntervalIndex.from_breaks([10, 30, 100, np.inf], closed="left")
+MEMBERS_LABELS = ["10–29", "30–99", "≥ 100"]
+
+
 def score(source_ids, labels, members: pd.DataFrame, reference) -> pd.DataFrame:
     """One row per reference cluster name.
 

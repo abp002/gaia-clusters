@@ -123,6 +123,17 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 .more:hover { background: var(--ink); color: var(--paper); }
 
 section { padding: 56px 0; }
+.rates-lede { margin: 0 0 18px; max-width: 760px; font-size: 16px; line-height: 1.55; color: var(--muted); }
+.rates-key { display: flex; gap: 8px 22px; font: 13px var(--mono); color: var(--muted); margin-bottom: 10px; }
+.rates-key span { display: inline-flex; align-items: center; gap: 8px; }
+.rates-key i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.rates-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px 48px; }
+.rates-charts figure { margin: 0; border-top: 1px solid var(--ink); padding-top: 12px; }
+.rates-charts figcaption { font-size: 17px; font-weight: 650; margin-bottom: 8px; }
+.rates-chart { display: block; width: 100%; height: auto; }
+.rates-chart text { font: 11px var(--mono); fill: var(--muted); }
+.rates-chart .value { fill: var(--ink); }
+.rates-chart .grid { stroke: var(--rule); stroke-width: 1; }
 .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 32px 40px; }
 .notes > div { border-top: 1px solid var(--ink); padding-top: 18px; }
 .notes p { margin: 0 0 12px; font-size: 16px; line-height: 1.55; color: var(--muted); }

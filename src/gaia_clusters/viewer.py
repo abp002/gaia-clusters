@@ -108,6 +108,14 @@ def cmd_stars(group: np.ndarray, reference: np.ndarray) -> tuple[np.ndarray, np.
     return np.concatenate([both, ours, theirs]), np.repeat([0, 1, 2], [len(both), len(ours), len(theirs)])
 
 
+def rates(table: pd.DataFrame, column: str, order: list[str]) -> list[dict]:
+    """Per bin of `column` (score_region's distance or members), in `order`: how many recoverable clusters
+    it holds and how many of them were recovered by at least one run."""
+    rec = table[table.recoverable]
+    return [{"bin": b, "recovered": int(rec.recovered[rec[column] == b].sum()), "total": int((rec[column] == b).sum())}
+            for b in order]
+
+
 def build(stars: pd.DataFrame, labels: pd.DataFrame, members: pd.DataFrame, table: pd.DataFrame,
           named: dict[str, str], unverified_run: int, seed: int = 0) -> dict:
     """Everything the viewer draws for one region, in parsecs.
