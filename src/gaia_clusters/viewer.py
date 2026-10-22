@@ -158,7 +158,7 @@ def build(stars: pd.DataFrame, labels: pd.DataFrame, members: pd.DataFrame, tabl
                                 stars.pm_b.to_numpy()[field], far)
     return {"clusters": clusters, "field_xyz": field_xyz, "member_xyz": member_xyz, "member_cluster": member_cluster,
             "field_pm": pm(field), "member_pm": pm(drawn), "unverified_pm": med[["pm_l", "pm_b"]].to_numpy(),
-            "reference": reference,
+            "reference": reference, "pm_centre": np.median(np.column_stack([stars.pm_l.to_numpy()[field], stars.pm_b.to_numpy()[field]]), axis=0),
             "member_index": drawn,
             "unverified_xyz": unverified_xyz, "unverified_n": g.size().to_numpy(),
             "cmd_bp_rp": stars["BP-RP"].to_numpy()[cmd_idx], "cmd_g": stars.Gmag.to_numpy()[cmd_idx],
@@ -200,6 +200,7 @@ def write(out: Path, built: dict, summary: dict) -> dict:
         "members": {"file": "members.bin", "pm": "members-pm.bin", "count": len(built["member_xyz"])},
         "pm_step": PM_STEP,
         "reference": {"step": REFERENCE_STEP, "pm": np.round(built["reference"], 3).tolist()},
+        "pm_centre": np.round(built["pm_centre"], 3).tolist(),  # the field's median motion: the middle of the motion view
         "cmd": {"file": "cmd.bin", "count": len(built["cmd_cat"])},
         "clusters": clusters,
         "unverified": {"count": len(built["unverified_n"]), "n": built["unverified_n"].tolist(),

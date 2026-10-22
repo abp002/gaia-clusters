@@ -100,6 +100,11 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 .go:hover { background: var(--ink); color: var(--paper); }
 
 .time { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 18px; border-top: 1px solid var(--ink); font-family: var(--mono); font-size: 13px; }
+.space { display: flex; border: 1px solid var(--ink); }
+.space button { font: 500 13px var(--mono); padding: 6px 12px; min-height: 36px; border: 0; background: none; cursor: pointer; }
+.space button + button { border-left: 1px solid var(--ink); }
+.space button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.clock input:disabled, .toggle input:disabled { opacity: 0.4; }
 .clock { display: inline-flex; align-items: center; gap: 10px; flex: 1 1 260px; }
 .clock input { flex: 1; accent-color: var(--ink); min-height: 36px; margin: 0; }
 #myr-out { min-width: 8.5em; }

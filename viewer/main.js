@@ -15,6 +15,7 @@ const MIN_RADIUS = 4;                        // CSS pixels: no cluster is drawn 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const MAS_MYR = 4.8481e-3;                     // radians a star crosses in a million years at 1 mas/yr
 const SPAN = 5;                                // Myr either side of now that the time slider reaches
+const SPREAD = 50;                             // pc per mas/yr across and up the motion view
 const RAD = Math.PI / 180;
 const num = new Intl.NumberFormat('en-GB').format;
 const pct = (x) => `${Math.round(100 * x)} %`;
@@ -48,13 +49,18 @@ Object.assign(controls, { enableDamping: true, dampingFactor: 0.12, zoomToCursor
 // off-screen buffer, and the count is shown in grey on a log scale. Field stars arrive as 16-bit steps
 // between the region's corners (quant.lo, quant.hi).
 const quant = { lo: { value: new THREE.Vector3() }, step: { value: new THREE.Vector3() } };
+// The motion view (space = 1): along the wedge, each star's distance; across it, its proper motion in
+// longitude; up, in latitude, both from the field's median (centre), SPREAD pc per mas/yr. Three of the five
+// numbers HDBSCAN groups on; the other two, the place on the sky, are what the space view shows.
 // Moving in time: every star drifts along the sky at its proper motion (pm, in steps of pmStep mas/yr). Unless
 // seen from the Sun (relative = 0), the field's typical motion at the star's distance is taken off: the Sun's own
 // motion and the Galaxy's rotation shift every star at a distance alike (meta.reference, in bins of refStep pc).
 // Most stars have no radial velocity, so nothing moves in depth, and the paths are straight lines.
 const REF_BINS = 64;
 const motion = { myr: { value: 0 }, pmStep: { value: 0.01 }, relative: { value: 1 }, refStep: { value: 250 }, refCount: { value: 1 },
-                 ref: { value: Array.from({ length: REF_BINS }, () => new THREE.Vector2()) } };
+                 ref: { value: Array.from({ length: REF_BINS }, () => new THREE.Vector2()) },
+                 space: { value: 0 }, axis: { value: new THREE.Vector3(1, 0, 0) }, side: { value: new THREE.Vector3(0, 1, 0) },
+                 centre: { value: new THREE.Vector2() } };
 const drift = `uniform float myr; uniform float pmStep; uniform float relative; uniform float refStep; uniform float refCount;
   uniform vec2 ref[${REF_BINS}]; attribute vec2 pm;
   vec2 typical(float d) { float x = clamp(d / refStep - 0.5, 0.0, refCount - 1.0);
@@ -62,7 +68,11 @@ const drift = `uniform float myr; uniform float pmStep; uniform float relative; 
   vec3 drift(vec3 p) { float d = length(p); if (myr == 0.0 || d < 1e-3) return p;
     vec3 r = p / d, el = normalize(vec3(-r.y, r.x, 0.0)), eb = cross(r, el);
     vec2 m = pm * pmStep - relative * typical(d);
-    return p + d * ${MAS_MYR} * myr * (m.x * el + m.y * eb); }`;
+    return p + d * ${MAS_MYR} * myr * (m.x * el + m.y * eb); }
+  uniform float space; uniform vec3 axis; uniform vec3 side; uniform vec2 centre;
+  vec3 place(vec3 p) { if (space == 0.0) return drift(p);
+    vec2 m = (pm * pmStep - centre) * ${SPREAD.toFixed(1)};
+    return mix(drift(p), axis * length(p) + side * m.x + vec3(0.0, 0.0, m.y), space); }`;
 const fieldScene = new THREE.Scene();
 // Half floats count far past the 255 of a byte; a browser without them gets the byte, which clips
 const halfFloat = ['EXT_color_buffer_float', 'EXT_color_buffer_half_float'].some((e) => renderer.extensions.has(e));
@@ -72,7 +82,7 @@ const density = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false, type: ha
 const fieldMaterial = new THREE.ShaderMaterial({
   uniforms: { ...quant, ...motion, size: { value: dpr } },  // one CSS pixel, so the counts do not depend on the screen
   vertexShader: `uniform vec3 lo; uniform vec3 step; uniform float size; ${drift}
-    void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(drift(lo + position * step), 1.0); gl_PointSize = size; }`,
+    void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(place(lo + position * step), 1.0); gl_PointSize = size; }`,
   fragmentShader: `void main() { gl_FragColor = vec4(${unit.toFixed(8)}); }`,
   blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
   transparent: true, depthTest: false, depthWrite: false,
@@ -96,7 +106,7 @@ const proj = { value: 1 };
 const memberMaterial = new THREE.ShaderMaterial({
   uniforms: { ...motion, size: { value: 3.2 * dpr }, ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 } },
   vertexShader: `uniform float size; uniform float hi; attribute float cluster; ${drift}
-    void main() { gl_Position = abs(cluster - hi) < 0.5 ? projectionMatrix * modelViewMatrix * vec4(drift(position), 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
+    void main() { gl_Position = abs(cluster - hi) < 0.5 ? projectionMatrix * modelViewMatrix * vec4(place(position), 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
       gl_PointSize = size; }`,
   fragmentShader: `uniform vec3 ink;
     void main() { vec2 c = gl_PointCoord - 0.5; if (dot(c, c) > 0.25) discard; gl_FragColor = vec4(ink, 1.0); }`,
@@ -108,8 +118,8 @@ const ringMaterial = new THREE.ShaderMaterial({
               line: { value: 1.2 * dpr }, scale: { value: dpr }, proj, least: { value: 2 * MIN_RADIUS * dpr } },
   vertexShader: `uniform float hi; uniform float scale; uniform float proj; uniform float least; attribute float radius; attribute float idx;
     varying float vHi; varying float vSize; ${drift}
-    void main() { vHi = abs(idx - hi) < 0.5 ? 1.0 : 0.0; vec4 p = modelViewMatrix * vec4(drift(position), 1.0);
-      vSize = max(least, 2.0 * radius * proj / -p.z) + 2.0 * scale * vHi;
+    void main() { vHi = abs(idx - hi) < 0.5 ? 1.0 : 0.0; vec4 p = modelViewMatrix * vec4(place(position), 1.0);
+      vSize = max(least, 2.0 * radius * (1.0 - space) * proj / -p.z) + 2.0 * scale * vHi;
       gl_Position = projectionMatrix * p; gl_PointSize = vSize; }`,
   fragmentShader: `uniform vec3 color; uniform vec3 ink; uniform float line; varying float vHi; varying float vSize;
     void main() { float r = length(gl_PointCoord - 0.5) * vSize, w = line * (1.0 + vHi);
@@ -121,7 +131,7 @@ const squareMaterial = new THREE.ShaderMaterial({
               size: { value: 7 * dpr }, line: { value: 1.3 * dpr } },
   vertexShader: `uniform float size; uniform float hi; attribute float idx; varying float vHi; ${drift}
     void main() { vHi = abs(idx - hi) < 0.5 ? 1.0 : 0.0;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(drift(position), 1.0); gl_PointSize = size * (1.0 + 0.4 * vHi); }`,
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(place(position), 1.0); gl_PointSize = size * (1.0 + 0.4 * vHi); }`,
   fragmentShader: `uniform vec3 color; uniform vec3 ink; uniform float size; uniform float line; varying float vHi;
     void main() { vec2 c = abs(gl_PointCoord - 0.5); float m = max(c.x, c.y);
       if (m > 0.5 || m < 0.5 - line * (1.0 + vHi) / (size * (1.0 + 0.4 * vHi))) discard;
@@ -210,6 +220,9 @@ function build(name, meta, membersBuf, cmdBuf, get) {
   group.add(points(mg, memberMaterial, 6));
   region.members = { pos, cluster, geometry: mg };
   motion.pmStep.value = meta.pm_step;
+  motion.centre.value.fromArray(meta.pm_centre);
+  motion.axis.value.copy(toward((meta.box.l[0] + meta.box.l[1]) / 2, 0, 1));
+  motion.side.value.copy(toward((meta.box.l[0] + meta.box.l[1]) / 2 + 90, 0, 1));
   const ref = meta.reference.pm.slice(0, REF_BINS);
   ref.forEach(([l, b], k) => motion.ref.value[k].set(l, b));
   motion.refCount.value = ref.length;
@@ -267,9 +280,20 @@ const sun = new THREE.DirectionalLight(0xffffff, 1.4);
 sun.position.set(-1, 1, 3);
 scene.add(sun);
 
-// Where a point is at the current time, as the shaders' drift() puts it; pm in mas/yr
-const along = new THREE.Vector3(), across = new THREE.Vector3(), radial = new THREE.Vector3();
-function drifted(p, pm, out = new THREE.Vector3()) {
+// Where a point is drawn, as the shaders' place() puts it: at the current time, and on the way to the motion
+// view by `space`; pm in mas/yr
+const along = new THREE.Vector3(), across = new THREE.Vector3(), radial = new THREE.Vector3(), inMotion = new THREE.Vector3();
+function placed(p, pm, out = new THREE.Vector3()) {
+  const s = motion.space.value;
+  if (s && pm) {
+    const { axis, side, centre } = motion;
+    inMotion.copy(axis.value).multiplyScalar(p.length()).addScaledVector(side.value, (pm[0] - centre.value.x) * SPREAD);
+    inMotion.z += (pm[1] - centre.value.y) * SPREAD;
+  }
+  drifted(p, pm, out);
+  return s && pm ? out.lerp(inMotion, s) : out;
+}
+function drifted(p, pm, out) {
   const t = motion.myr.value, d = p.length();
   out.copy(p);
   if (!t || !pm || d < 1e-3) return out;
@@ -279,19 +303,20 @@ function drifted(p, pm, out = new THREE.Vector3()) {
   const k = d * MAS_MYR * t, [l, b] = motion.relative.value ? R.typical(d) : [0, 0];
   return out.addScaledVector(along, k * (pm[0] - l)).addScaledVector(across, k * (pm[1] - b));
 }
-const clusterAt = (c, out = new THREE.Vector3()) => drifted(out.fromArray(c.xyz), c.pm, out);
+const clusterAt = (c, out = new THREE.Vector3()) => placed(out.fromArray(c.xyz), c.pm, out);
 
 const inView = new THREE.Vector3(), at = new THREE.Vector3();
 const depth = (v) => -inView.copy(v).applyMatrix4(camera.matrixWorldInverse).z;
 // A cluster's radius on screen, in CSS pixels
-const screenRadius = (c) => Math.max(MIN_RADIUS, c.radius * proj.value / dpr / Math.max(depth(clusterAt(c, at)), 1e-3));
+const screenRadius = (c) => Math.max(MIN_RADIUS, c.radius * (1 - motion.space.value) * proj.value / dpr / Math.max(depth(clusterAt(c, at)), 1e-3));
 
 const scaled = new THREE.Matrix4();
 function drawSpheres() {
   const on = hovered ?? pinned;
   R.found.forEach((i, k) => {
     const c = R.meta.clusters[i], p = clusterAt(c, at), d = depth(p);  // behind the camera (d < 0), at its own size
-    const r = on?.kind === 'cluster' && on.i === i ? 0 : Math.max(c.radius, MIN_RADIUS * dpr * d / proj.value);
+    const size = c.radius * (1 - motion.space.value);  // a size in parsecs means nothing in the motion view
+    const r = on?.kind === 'cluster' && on.i === i ? 0 : Math.max(size, MIN_RADIUS * dpr * d / proj.value);
     R.spheres.setMatrixAt(k, scaled.makeScale(r, r, r).setPosition(p));
   });
   R.spheres.instanceMatrix.needsUpdate = true;
@@ -357,8 +382,9 @@ function placeLabels() {
     return [r.left - at.left, r.top - at.top, r.right - at.left, r.bottom - at.top];
   });
   for (const lab of R.labels) {
-    drifted(lab.at, lab.pm, projected).project(camera);
-    let off = projected.z > 1 || Math.abs(projected.x) > 1.05 || Math.abs(projected.y) > 1.05;
+    placed(lab.at, lab.pm, projected).project(camera);
+    let off = projected.z > 1 || Math.abs(projected.x) > 1.05 || Math.abs(projected.y) > 1.05
+      || (lab.rank === 2 && motion.space.value > 0.5);  // the kiloparsec arcs are gone in the motion view
     if (!off) {
       const x = (projected.x + 1) / 2 * w + 7, y = (1 - projected.y) / 2 * h - 15;
       lab.w ||= lab.el.offsetWidth;
@@ -374,13 +400,33 @@ function placeLabels() {
   }
 }
 
+let morph = null;  // the space value and clock time a switch between views started from
+function showSpace(to) {
+  const region = R;
+  for (const b of document.querySelectorAll('[data-space]')) b.setAttribute('aria-pressed', String(+b.dataset.space === to));
+  $('#space-note').hidden = !to;
+  $('#time-note').hidden = !!to;
+  for (const el of ['#play', '#myr', '#sun-frame']) $(el).disabled = !!to;
+  if (to) { stop(); setTime(0); }
+  $('#now').disabled = !!to || motion.myr.value === 0;
+  const go = () => { if (region === R) morph = { from: motion.space.value, to, t0: performance.now() - (reduceMotion ? 1e4 : 0) }; };
+  return to ? loadMotions(region).then(go) : go();
+}
+function tickMorph() {
+  const t = Math.min(1, (performance.now() - morph.t0) / 1200), e = t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2;
+  moving(() => { motion.space.value = morph.from + (morph.to - morph.from) * e; });
+  lineMaterial.opacity = 1 - motion.space.value;
+  lastMove = performance.now();
+  if (t === 1) morph = null;
+}
+
 let playing = null;  // the time and clock time the play started from
 // Where the pinned cluster or group is now, if the view is close enough to be looking at it
 function followed() {
   if (!R || !pinned || flight || camera.position.distanceTo(controls.target) > 300) return null;
   if (pinned.kind === 'cluster') return clusterAt(R.meta.clusters[pinned.i]);
   const { xyz, pm } = R.meta.unverified;
-  return drifted(new THREE.Vector3().fromArray(xyz, 3 * pinned.i), [pm[2 * pinned.i], pm[2 * pinned.i + 1]]);
+  return placed(new THREE.Vector3().fromArray(xyz, 3 * pinned.i), [pm[2 * pinned.i], pm[2 * pinned.i + 1]]);
 }
 // Change where things are drawn, with the view travelling along with the pinned cluster, so it stays in sight
 function moving(change) {
@@ -428,6 +474,9 @@ function clear() {
   if (!R) return;
   stop();
   setTime(0);
+  morph = null;
+  motion.space.value = 0;
+  lineMaterial.opacity = 1;
   scene.remove(R.group);
   fieldScene.remove(R.field);
   for (const g of [R.group, R.field]) g.traverse((o) => o.geometry?.dispose());
@@ -555,7 +604,7 @@ function pick(px, py) {
   if (R.unverified.visible) {
     const { xyz, pm } = R.meta.unverified, p = new THREE.Vector3();
     for (let i = 0; i < xyz.length / 3; i++) {
-      drifted(p.fromArray(xyz, 3 * i), [pm[2 * i], pm[2 * i + 1]], p);
+      placed(p.fromArray(xyz, 3 * i), [pm[2 * i], pm[2 * i + 1]], p);
       consider(dist2(p.x, p.y, p.z), 8, { kind: 'group', i });
     }
   }
@@ -600,10 +649,10 @@ function zoomTo(view) {
 function goTo(hit) {
   if (hit.kind === 'cluster') {
     const at = centre(R, hit.i);
-    flyTo(drifted(at, R.meta.clusters[hit.i].pm), viewDistance(R, hit.i, at));
+    flyTo(placed(at, R.meta.clusters[hit.i].pm), viewDistance(R, hit.i, at));
   } else {
     const { xyz, pm } = R.meta.unverified;
-    flyTo(drifted(new THREE.Vector3().fromArray(xyz, 3 * hit.i), [pm[2 * hit.i], pm[2 * hit.i + 1]]), 40);
+    flyTo(placed(new THREE.Vector3().fromArray(xyz, 3 * hit.i), [pm[2 * hit.i], pm[2 * hit.i + 1]]), 40);
   }
 }
 
@@ -736,6 +785,7 @@ $('#more').addEventListener('click', async () => {
 });
 for (const b of document.querySelectorAll('[data-zoom]')) b.addEventListener('click', () => zoomTo(b.dataset.zoom));
 $('#play').addEventListener('click', () => play().catch(failed));
+for (const b of document.querySelectorAll('[data-space]')) b.addEventListener('click', () => showSpace(+b.dataset.space)?.catch?.(failed));
 $('#now').addEventListener('click', () => { stop(); setTime(0); });
 $('#sun-frame').addEventListener('change', (e) => moving(() => { motion.relative.value = e.target.checked ? 0 : 1; }));
 $('#myr').min = -SPAN;
@@ -795,6 +845,7 @@ function draw() {
   requestAnimationFrame(draw);
   if (flight) fly();
   if (playing) tick();
+  if (morph) tickMorph();
   controls.update();
   const moving = performance.now() - lastMove < 250;
   if (!R || (!needs && !moving && performance.now() - lastMove > 400)) return;
