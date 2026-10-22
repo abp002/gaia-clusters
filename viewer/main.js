@@ -322,11 +322,12 @@ function drawSpheres() {
   R.spheres.instanceMatrix.needsUpdate = true;
 }
 
-// Recovery by bin, every region side by side: horizontal bars, one colour per region in the buttons' order
+// Recovery by bin, every region side by side: horizontal bars, one colour per region in the buttons' order. Drawn
+// W units wide for a figure W pixels wide, so its text keeps its size on a phone instead of scaling down with it
 const REGION_HEX = ['#2a78d6', '#eda100'];
-function rateChart(ms, by, title) {
+function rateChart(ms, by, title, W) {
   const bins = ms[0].meta.rates[by].map((r) => r.bin), bar = 12, gap = 2, band = ms.length * (bar + gap) + 14;
-  const W = 460, L = 74, Rm = 128, T = 8, H = T + bins.length * band + 22, sx = (v) => L + v * (W - L - Rm);
+  const L = 74, Rm = 128, T = 8, H = T + bins.length * band + 22, sx = (v) => L + v * (W - L - Rm);
   const grid = [0, 0.5, 1].map((v) => `<line class="grid" x1="${sx(v)}" x2="${sx(v)}" y1="${T}" y2="${H - 22}"/>
     <text x="${sx(v)}" y="${H - 6}" text-anchor="middle">${v * 100} %</text>`).join('');
   const rows = bins.map((b, i) => {
@@ -355,7 +356,15 @@ const metas = Promise.all([...document.querySelectorAll('[data-region]')].map(as
 const wedges = metas.then((ms) => ms.map(({ region, meta: m }) => ({ region, l: m.box.l, far: farEdge(m) / 1000 })));
 metas.then((ms) => {
   $('#rates-key').innerHTML = ms.map(({ meta }, k) => `<span><i style="background:${REGION_HEX[k]}"></i>${esc(meta.title)}</span>`).join('');
-  $('#rates-charts').innerHTML = rateChart(ms, 'distance', 'By the cluster\'s distance') + rateChart(ms, 'members', 'By its members in our sample');
+  const charts = $('#rates-charts');
+  let drawn = 0;
+  new ResizeObserver(() => {  // the columns of .rates-charts: as many 300 px ones as fit, at most two, 48 px apart
+    const cw = charts.clientWidth, cols = Math.max(1, Math.min(2, Math.floor((cw + 48) / 348)));
+    const W = Math.round((cw - 48 * (cols - 1)) / cols);
+    if (W === drawn) return;
+    drawn = W;
+    charts.innerHTML = rateChart(ms, 'distance', 'By the cluster\'s distance', W) + rateChart(ms, 'members', 'By its members in our sample', W);
+  }).observe(charts);
 }).catch(() => { $('#rates').hidden = true; });
 async function galaxy(name) {
   const at = (l, d) => `${(-Math.sin(l * RAD) * d).toFixed(2)} ${(R0 - Math.cos(l * RAD) * d).toFixed(2)}`;
@@ -410,9 +419,10 @@ function placeLabels() {
     drifted(lab.at, lab.pm, projected).project(camera);
     let off = projected.z > 1 || Math.abs(projected.x) > 1.05 || Math.abs(projected.y) > 1.05;
     if (!off) {
-      const x = (projected.x + 1) / 2 * w + 7, y = (1 - projected.y) / 2 * h - 15;
       lab.w ||= lab.el.offsetWidth;
       lab.h ||= lab.el.offsetHeight;
+      const px = (projected.x + 1) / 2 * w, y = (1 - projected.y) / 2 * h + (lab.below ? 4 : -15);
+      const x = px + 7 + lab.w > w ? px - 7 - lab.w : px + 7;  // to the left where the right edge would cut it
       const r = [x - 3, y - 3, x + lab.w + 3, y + lab.h + 3];
       off = taken.some((t) => r[0] < t[2] && r[2] > t[0] && r[1] < t[3] && r[3] > t[1]);
       if (!off) {
@@ -574,7 +584,9 @@ function frame(region, height) {
   region.home = { dir, distance, target: target.clone() };
   const screen = ([l, b]) => toward(l, b, far).project(camera);
   const [l, b] = edges.sort((p, q) => tall ? screen(q).x - screen(p).x : screen(p).y - screen(q).y)[0];
-  for (const lab of region.labels) if (lab.distance) lab.at.copy(toward(l, b, lab.distance));
+  for (const lab of region.labels) {  // under the edge across a wide view, beside it up a tall one: off the clusters
+    if (lab.distance) lab.at.copy(toward(l, b, lab.distance)), lab.below = !tall;
+  }
   needs = true;
 }
 

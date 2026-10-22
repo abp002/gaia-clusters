@@ -70,7 +70,7 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 .galaxy .here { fill: var(--recovered); }
 .galaxy .other { fill: var(--faint); opacity: 0.45; }
 .galaxy .sun { fill: var(--ink); }
-.galaxy text { font: 1.6px var(--mono); fill: var(--ink); }
+.galaxy text { font: 2.1px var(--mono); fill: var(--ink); }
 .galaxy .title { fill: var(--faint); }
 .hint { position: absolute; left: 12px; top: 10px; margin: 0; font-size: 11px; color: var(--faint); pointer-events: none; }
 
@@ -155,7 +155,6 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
   .wrap { padding: 0 16px; }
   .intro { padding: 32px 0 24px; }
   .lede { font-size: 16px; }
-  .galaxy { width: 128px; height: 136px; }
   .find { flex-wrap: wrap; }
   .find select { max-width: 100%; }
 }
