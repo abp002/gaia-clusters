@@ -254,7 +254,7 @@ function guides(region) {
   for (let d = 1000; d <= far; d += 1000) {
     label(region, `${d / 1000} kpc`, toward(l1, 0, d), 'scale', d);  // frame() moves it to the edge in front
   }
-  label(region, 'Sun', new THREE.Vector3(), 'scale');
+  label(region, 'Sun', new THREE.Vector3(), 'scale sun');
   const lines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lineMaterial);
   lines.renderOrder = 1;
   return lines;
@@ -265,17 +265,29 @@ function label(region, text, at, kind, distance) {
   el.className = kind;
   el.textContent = text;
   labelsEl.append(el);
-  region.labels.push({ el, at, distance });
+  region.labels.push({ el, at, distance, rank: kind.includes('sun') ? 0 : kind === 'named' ? 1 : 2 });
+  region.labels.sort((a, b) => a.rank - b.rank);  // placeLabels() hides a label that would cover one placed before it
 }
 
 const projected = new THREE.Vector3();
 function placeLabels() {
   const w = box.clientWidth, h = box.clientHeight;
-  for (const { el, at } of R.labels) {
-    projected.copy(at).project(camera);
-    const off = projected.z > 1 || Math.abs(projected.x) > 1.05 || Math.abs(projected.y) > 1.05;
-    el.style.visibility = off ? 'hidden' : '';
-    if (!off) el.style.transform = `translate(${((projected.x + 1) / 2 * w + 7).toFixed(1)}px, ${((1 - projected.y) / 2 * h - 15).toFixed(1)}px)`;
+  const taken = [$('#hint'), $('.zoom')].map((el) => [el.offsetLeft, el.offsetTop, el.offsetLeft + el.offsetWidth, el.offsetTop + el.offsetHeight]);
+  for (const lab of R.labels) {
+    projected.copy(lab.at).project(camera);
+    let off = projected.z > 1 || Math.abs(projected.x) > 1.05 || Math.abs(projected.y) > 1.05;
+    if (!off) {
+      const x = (projected.x + 1) / 2 * w + 7, y = (1 - projected.y) / 2 * h - 15;
+      lab.w ||= lab.el.offsetWidth;
+      lab.h ||= lab.el.offsetHeight;
+      const r = [x - 3, y - 3, x + lab.w + 3, y + lab.h + 3];
+      off = taken.some((t) => r[0] < t[2] && r[2] > t[0] && r[1] < t[3] && r[3] > t[1]);
+      if (!off) {
+        taken.push(r);
+        lab.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+      }
+    }
+    lab.el.style.visibility = off ? 'hidden' : '';
   }
 }
 
@@ -342,6 +354,7 @@ function frame(region, height) {
   place(dir, distance);
   controls.target.copy(target);
   controls.update();
+  region.home = { dir, distance, target: target.clone() };
   const screen = ([l, b]) => toward(l, b, far).project(camera);
   const [l, b] = edges.sort((p, q) => tall ? screen(q).x - screen(p).x : screen(p).y - screen(q).y)[0];
   for (const lab of region.labels) if (lab.distance) lab.at.copy(toward(l, b, lab.distance));
@@ -366,17 +379,17 @@ function viewDistance(region, i, at) {
   return Math.max(12, 5.5 * d[Math.floor(0.9 * (d.length - 1))]);
 }
 
-function flyTo(at, distance) {
-  const dir = camera.position.clone().sub(controls.target).normalize();
-  const from = { target: controls.target.clone(), distance: camera.position.distanceTo(controls.target) };
-  flight = { t0: performance.now(), dir, from, to: { target: at.clone(), distance } };
+function flyTo(at, distance, dir) {
+  const from = { target: controls.target.clone(), distance: camera.position.distanceTo(controls.target),
+                 dir: camera.position.clone().sub(controls.target).normalize() };
+  flight = { t0: performance.now(), from, to: { target: at.clone(), distance, dir: dir ?? from.dir } };
   if (reduceMotion) flight.t0 -= 1e4;
 }
 
 function fly() {
   const t = Math.min(1, (performance.now() - flight.t0) / 1100);
   const e = t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2;
-  const { from, to, dir } = flight;
+  const { from, to } = flight, dir = from.dir.clone().lerp(to.dir, e).normalize();
   controls.target.lerpVectors(from.target, to.target, e);
   const d = Math.exp(Math.log(from.distance) + (Math.log(to.distance) - Math.log(from.distance)) * e);
   camera.position.copy(controls.target).addScaledVector(dir, d);
@@ -434,6 +447,15 @@ function pin(hit, go = false) {
   highlight();
   showCard(hit);
   if (hit && go) goTo(hit);
+}
+
+// The first kiloparsec from above, where the clusters crowd; or the whole region again
+function zoomTo(view) {
+  if (!R) return;
+  const { home } = R, { box: { l: [l0, l1] } } = R.meta;
+  if (view === 'home') return flyTo(home.target, home.distance, home.dir);
+  const across = camera.aspect < 0.9 ? 1 : camera.aspect;  // the wedge runs across a wide view, up a tall one
+  flyTo(toward((l0 + l1) / 2, 0, 500), 600 / (Math.tan(camera.fov * RAD / 2) * across), home.dir);
 }
 
 function goTo(hit) {
@@ -572,6 +594,7 @@ $('#more').addEventListener('click', async () => {
   $('#more').hidden = true;
   for (let k = region.levels.length; k < region.meta.field.levels.length && region === R; k++) await addLevel(region, k);
 });
+for (const b of document.querySelectorAll('[data-zoom]')) b.addEventListener('click', () => zoomTo(b.dataset.zoom));
 card.addEventListener('click', (e) => {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (act === 'unpin') { pin(null); $('#find').value = ''; }

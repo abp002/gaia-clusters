@@ -53,6 +53,10 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
   text-shadow: 0 0 2px var(--paper), 0 0 2px var(--paper), 0 0 4px var(--paper); }
 .labels .scale { color: var(--faint); font-size: 11px; }
 .labels .named { font-weight: 500; }
+.zoom { position: absolute; right: 10px; top: 8px; display: flex; border: 1px solid var(--ink); background: var(--paper); }
+.zoom button { font: 500 12px var(--mono); padding: 4px 10px; min-height: 30px; border: 0; background: none; cursor: pointer; }
+.zoom button + button { border-left: 1px solid var(--ink); }
+.zoom button:hover { background: var(--ink); color: var(--paper); }
 .hint { position: absolute; left: 12px; top: 10px; margin: 0; font-size: 11px; color: var(--faint); pointer-events: none; }
 
 .card { border-top: 1px solid var(--ink); padding: 18px 18px 20px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px 48px; min-height: 345px; }
@@ -106,6 +110,7 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
 
 @media (max-width: 900px) {
   .view { height: clamp(360px, 62vh, 620px); }
+  .zoom { top: auto; right: auto; bottom: 10px; left: 10px; }  /* the hint wraps over the top; the Sun sits bottom right */
   .card { min-height: 0; }
   .field-status { margin-left: 0; }
 }
