@@ -23,6 +23,7 @@ const toward = (l, b, d) => new THREE.Vector3(Math.cos(b * RAD) * Math.cos(l * R
                                               Math.sin(b * RAD)).multiplyScalar(d);
 
 const box = $('#view-box'), canvas = $('#view'), labelsEl = $('#labels'), card = $('#card');
+const narrow = matchMedia('(max-width: 900px)');  // the CSS breakpoint where the view gets tall
 let renderer;
 try {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -238,10 +239,13 @@ function drawSpheres() {
   R.spheres.instanceMatrix.needsUpdate = true;
 }
 
+// The kiloparsec past the field's 99th percentile and the farthest cluster: some clusters lie beyond the field
+const farEdge = (meta) => Math.ceil(Math.max(meta.reach, ...meta.clusters.map((c) => Math.hypot(...c.xyz))) / 1000) * 1000;
+
 // The Galactic plane under the wedge: a ray every 2° of longitude from the Sun, an arc every half kiloparsec
 function guides(region) {
-  const { box: { l: [l0, l1] }, reach } = region.meta;
-  const far = Math.ceil(reach / 1000) * 1000, steps = 40, pts = [];
+  const { box: { l: [l0, l1] } } = region.meta;
+  const far = farEdge(region.meta), steps = 40, pts = [];
   const arc = (b, d) => {
     for (let s = 0; s < steps; s++) pts.push(toward(l0 + (l1 - l0) * s / steps, b, d), toward(l0 + (l1 - l0) * (s + 1) / steps, b, d));
   };
@@ -288,11 +292,13 @@ function clear() {
 
 // The whole wedge in view from above, tilted a little so it reads as a solid, with the Sun at the left;
 // on a tall screen, with the Sun at the bottom. The distance labels go on the edge nearest the viewer.
-function frame(region) {
-  const { box: { l: [l0, l1], b: [b0, b1] }, reach } = region.meta;
+// On a wide screen the wedge is much longer than the view is tall, so the view shrinks to the wedge.
+function frame(region, height) {
+  const { box: { l: [l0, l1], b: [b0, b1] } } = region.meta;
+  box.style.height = height ? `${height}px` : '';
   camera.aspect = box.clientWidth / box.clientHeight;
   camera.updateProjectionMatrix();
-  const lc = (l0 + l1) / 2, far = Math.ceil(reach / 1000) * 1000, tall = camera.aspect < 0.9;
+  const lc = (l0 + l1) / 2, far = farEdge(region.meta), tall = camera.aspect < 0.9;
   const axis = toward(lc, 0, 1), side = toward(lc + 90, 0, 1), north = new THREE.Vector3(0, 0, 1);
   const corners = [[l0, b0], [l0, b1], [l1, b0], [l1, b1]], edges = [[l0, 0], [l1, 0]];
   const hull = [new THREE.Vector3(), ...corners.map(([l, b]) => toward(l, b, far))];
@@ -307,7 +313,7 @@ function frame(region) {
   let dir;
   for (const sign of [1, -1]) {
     dir = (tall ? axis.clone().multiplyScalar(-0.3).addScaledVector(side, 0.15 * sign).addScaledVector(north, 0.94)
-                : axis.clone().multiplyScalar(-0.02).addScaledVector(side, 0.12 * sign).addScaledVector(north, 0.99)).normalize();
+                : side.clone().multiplyScalar(0.12 * sign).addScaledVector(north, 0.99)).normalize();
     place(dir, far);
     if ((tall ? up : right).dot(axis) > 0) break;
   }
@@ -328,6 +334,10 @@ function frame(region) {
     }
     const e = extent(), half = distance * Math.tan(camera.fov * RAD / 2);
     target.addScaledVector(right, (e.x[0] + e.x[1]) / 2 * half * camera.aspect).addScaledVector(up, (e.y[0] + e.y[1]) / 2 * half);
+  }
+  if (!height && !narrow.matches) {  // the wedge fills 75 % of the height, leaving room for its labels
+    const e = extent(), fit = Math.max(300, Math.ceil(box.clientHeight * (e.y[1] - e.y[0]) / 2 / 0.75));
+    if (fit < box.clientHeight) return frame(region, fit);
   }
   place(dir, distance);
   controls.target.copy(target);
@@ -442,11 +452,11 @@ function showCard(hit) {
 
 function emptyCard() {
   const m = R.meta;
-  return `<p class="kicker">${esc(m.title)}</p>
+  return `<div class="info"><p class="kicker">${esc(m.title)}</p>
     <p>Point at a blue sphere or a red ring, or tap it, for its card. Every cluster is also in the list under the map.</p>
     <dl class="facts"><dt>Recovered</dt><dd>${m.recovered} of ${m.recoverable} (${pct(m.recovered / m.recoverable)})</dd>
     <dt>Highly reliable</dt><dd>${m.reliable_recovered} of ${m.reliable} (${pct(m.reliable_recovered / m.reliable)})</dd>
-    <dt>Missed</dt><dd>${m.recoverable - m.recovered}</dd><dt>Field stars</dt><dd>${num(m.field.count)}</dd></dl>`;
+    <dt>Missed</dt><dd>${m.recoverable - m.recovered}</dd><dt>Field stars</dt><dd>${num(m.field.count)}</dd></dl></div>`;
 }
 
 function clusterCard(i) {
@@ -456,23 +466,24 @@ function clusterCard(i) {
   const group = !c.size ? `No group of the leaf runs holds any of its members.`
     : `${c.recovered ? 'Shown' : 'Closest'}: a group of ${num(c.size)} stars in the run with min_cluster_size ${c.run}.`
       + (others.length ? ` Also recovered at ${list(others)}.` : '');
-  return `<div class="head"><div>${status}<h3>${esc(c.label)}</h3>${c.label !== plain ? `<span class="alias">${esc(plain)} in Hunt &amp; Reffert</span>` : ''}</div>
+  const figure = cmdFigure(c);
+  return `<div class="info"><div class="head"><div>${status}<h3>${esc(c.label)}</h3>${c.label !== plain ? `<span class="alias">${esc(plain)} in Hunt &amp; Reffert</span>` : ''}</div>
     ${same(pinned, { kind: 'cluster', i }) ? '<button type="button" class="close" data-act="unpin" aria-label="Close">×</button>' : ''}</div>
     <p class="meta">${kpc(c.dist)} · ${num(c.n)} members in our sample</p>
     <div class="scores"><div><span>Recovery</span><b>${pct(c.recovery)}</b></div><div><span>Purity</span><b>${pct(c.purity)}</b></div></div>
     <p>${group} ${c.reliable ? 'Highly reliable in Hunt &amp; Reffert.' : 'Not rated highly reliable by Hunt &amp; Reffert.'}</p>
-    ${cmdFigure(c)}
-    <button type="button" class="go" data-act="go" data-i="${i}">Go to ${esc(c.label)}</button>`;
+    <button type="button" class="go" data-act="go" data-i="${i}">Go to ${esc(c.label)}</button></div>
+    ${figure ? `<div class="plot">${figure}</div>` : ''}`;
 }
 
 const list = (xs) => xs.length < 2 ? `${xs[0]}` : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`;
 
 function groupCard(i) {
   const u = R.meta.unverified, at = new THREE.Vector3().fromArray(u.xyz, 3 * i);
-  return `<div class="head"><div><p class="kicker">Unverified group</p><h3>${num(u.n[i])} stars</h3></div></div>
+  return `<div class="info"><div class="head"><div><p class="kicker">Unverified group</p><h3>${num(u.n[i])} stars</h3></div></div>
     <p class="meta">${kpc(at.length())}, the median of its stars · min_cluster_size ${R.meta.unverified_run}</p>
     <p>No Hunt &amp; Reffert cluster holds most of its stars. Hunt &amp; Reffert discard groups like this with a significance
-    test and a colour-magnitude classifier, which this project does not have, so it is not counted as a cluster.</p>`;
+    test and a colour-magnitude classifier, which this project does not have, so it is not counted as a cluster.</p></div>`;
 }
 
 // Colour-magnitude diagram: G against BP − RP, blue in both, red ours only, grey theirs only
@@ -584,6 +595,15 @@ canvas.addEventListener('pointermove', (e) => {
 });
 canvas.addEventListener('pointerleave', () => hover(null));
 controls.addEventListener('change', () => { lastMove = performance.now(); needs = true; });
+
+// Frame again when the width changes; not on height alone, which a phone's address bar changes while scrolling
+let framedWidth = innerWidth, reframe;
+addEventListener('resize', () => {
+  if (innerWidth === framedWidth) return;
+  framedWidth = innerWidth;
+  clearTimeout(reframe);
+  reframe = setTimeout(() => R && frame(R), 150);
+});
 
 new ResizeObserver(() => {
   const w = box.clientWidth, h = box.clientHeight;
