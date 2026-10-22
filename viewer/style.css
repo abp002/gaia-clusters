@@ -57,6 +57,14 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 .zoom button { font: 500 12px var(--mono); padding: 4px 10px; min-height: 30px; border: 0; background: none; cursor: pointer; }
 .zoom button + button { border-left: 1px solid var(--ink); }
 .zoom button:hover { background: var(--ink); color: var(--paper); }
+.galaxy { flex: none; width: 168px; height: 178px; align-self: flex-end; margin-bottom: -6px; }
+.galaxy .disc { fill: var(--rule); opacity: 0.45; }
+.galaxy .centre { stroke: var(--ink); stroke-width: 0.25; }
+.galaxy .here { fill: var(--recovered); }
+.galaxy .other { fill: var(--faint); opacity: 0.45; }
+.galaxy .sun { fill: var(--ink); }
+.galaxy text { font: 1.6px var(--mono); fill: var(--ink); }
+.galaxy .title { fill: var(--faint); }
 .hint { position: absolute; left: 12px; top: 10px; margin: 0; font-size: 11px; color: var(--faint); pointer-events: none; }
 
 .card { border-top: 1px solid var(--ink); padding: 18px 18px 20px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px 48px; min-height: 345px; }
@@ -118,6 +126,7 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
   .wrap { padding: 0 16px; }
   .intro { padding: 32px 0 24px; }
   .lede { font-size: 16px; }
+  .galaxy { width: 128px; height: 136px; }
   .find { flex-wrap: wrap; }
   .find select { max-width: 100%; }
 }

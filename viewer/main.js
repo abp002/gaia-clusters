@@ -213,6 +213,7 @@ function build(name, meta, membersBuf, cmdBuf, get) {
   intro(meta);
   fillFind(meta);
   $('#unverified-label').textContent = `Show the ${num(meta.unverified.count)} unverified groups`;
+  galaxy(name);
   frame(region);
   return region;
 }
@@ -241,6 +242,25 @@ function drawSpheres() {
 
 // The kiloparsec past the field's 99th percentile and the farthest cluster: some clusters lie beyond the field
 const farEdge = (meta) => Math.ceil(Math.max(meta.reach, ...meta.clusters.map((c) => Math.hypot(...c.xyz))) / 1000) * 1000;
+
+// Where the regions sit in the Milky Way, seen from the north Galactic pole: a schematic disc in kiloparsecs,
+// the centre at the origin and the Sun 8.2 kpc below it. Longitude l points at (−sin l, −cos l) on screen.
+const R0 = 8.2, DISC = 15;
+const wedges = Promise.all([...document.querySelectorAll('[data-region]')].map(async ({ dataset: { region } }) => {
+  const m = await (await fetch(`data/${region}/meta.json`)).json();
+  return { region, l: m.box.l, far: farEdge(m) / 1000 };
+}));
+async function galaxy(name) {
+  const at = (l, d) => `${(-Math.sin(l * RAD) * d).toFixed(2)} ${(R0 - Math.cos(l * RAD) * d).toFixed(2)}`;
+  const shapes = (await wedges).map(({ region, l: [l0, l1], far }) =>
+    `<path class="${region === name ? 'here' : 'other'}" d="M0 ${R0}L${at(l0, far)}A${far} ${far} 0 0 0 ${at(l1, far)}Z"/>`);
+  const el = $('#galaxy');
+  el.innerHTML = `<circle class="disc" r="${DISC}"/><path class="centre" d="M-0.8 0H0.8M0 -0.8V0.8"/>
+    <text x="0" y="-1.6" text-anchor="middle">Galactic centre</text>${shapes.join('')}
+    <circle class="sun" cy="${R0}" r="0.55"/><text x="-1.2" y="${R0 + 0.9}" text-anchor="end">Sun</text>
+    <text class="title" x="0" y="-15.3" text-anchor="middle">Milky Way, from above</text>`;
+  el.setAttribute('aria-label', `Where ${name[0].toUpperCase() + name.slice(1)} sits in the Milky Way, seen from above: a wedge from the Sun, ${R0} kpc from the Galactic centre`);
+}
 
 // The Galactic plane under the wedge: a ray every 2° of longitude from the Sun, an arc every half kiloparsec
 function guides(region) {
@@ -272,7 +292,11 @@ function label(region, text, at, kind, distance) {
 const projected = new THREE.Vector3();
 function placeLabels() {
   const w = box.clientWidth, h = box.clientHeight;
-  const taken = [$('#hint'), $('.zoom')].map((el) => [el.offsetLeft, el.offsetTop, el.offsetLeft + el.offsetWidth, el.offsetTop + el.offsetHeight]);
+  const at = box.getBoundingClientRect();
+  const taken = [$('#hint'), $('.zoom')].map((el) => {
+    const r = el.getBoundingClientRect();
+    return [r.left - at.left, r.top - at.top, r.right - at.left, r.bottom - at.top];
+  });
   for (const lab of R.labels) {
     projected.copy(lab.at).project(camera);
     let off = projected.z > 1 || Math.abs(projected.x) > 1.05 || Math.abs(projected.y) > 1.05;
