@@ -13,6 +13,8 @@ const MOVING = coarse ? 250_000 : 700_000;   // field stars drawn while the view
 const DARKEST = 400;                         // field stars per pixel drawn in the darkest grey
 const MIN_RADIUS = 4;                        // CSS pixels: no cluster is drawn smaller than this
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MAS_MYR = 4.8481e-3;                     // radians a star crosses in a million years at 1 mas/yr
+const SPAN = 5;                                // Myr either side of now that the time slider reaches
 const RAD = Math.PI / 180;
 const num = new Intl.NumberFormat('en-GB').format;
 const pct = (x) => `${Math.round(100 * x)} %`;
@@ -46,6 +48,21 @@ Object.assign(controls, { enableDamping: true, dampingFactor: 0.12, zoomToCursor
 // off-screen buffer, and the count is shown in grey on a log scale. Field stars arrive as 16-bit steps
 // between the region's corners (quant.lo, quant.hi).
 const quant = { lo: { value: new THREE.Vector3() }, step: { value: new THREE.Vector3() } };
+// Moving in time: every star drifts along the sky at its proper motion (pm, in steps of pmStep mas/yr). Unless
+// seen from the Sun (relative = 0), the field's typical motion at the star's distance is taken off: the Sun's own
+// motion and the Galaxy's rotation shift every star at a distance alike (meta.reference, in bins of refStep pc).
+// Most stars have no radial velocity, so nothing moves in depth, and the paths are straight lines.
+const REF_BINS = 64;
+const motion = { myr: { value: 0 }, pmStep: { value: 0.01 }, relative: { value: 1 }, refStep: { value: 250 }, refCount: { value: 1 },
+                 ref: { value: Array.from({ length: REF_BINS }, () => new THREE.Vector2()) } };
+const drift = `uniform float myr; uniform float pmStep; uniform float relative; uniform float refStep; uniform float refCount;
+  uniform vec2 ref[${REF_BINS}]; attribute vec2 pm;
+  vec2 typical(float d) { float x = clamp(d / refStep - 0.5, 0.0, refCount - 1.0);
+    return mix(ref[int(x)], ref[int(min(x + 1.0, refCount - 1.0))], fract(x)); }
+  vec3 drift(vec3 p) { float d = length(p); if (myr == 0.0 || d < 1e-3) return p;
+    vec3 r = p / d, el = normalize(vec3(-r.y, r.x, 0.0)), eb = cross(r, el);
+    vec2 m = pm * pmStep - relative * typical(d);
+    return p + d * ${MAS_MYR} * myr * (m.x * el + m.y * eb); }`;
 const fieldScene = new THREE.Scene();
 // Half floats count far past the 255 of a byte; a browser without them gets the byte, which clips
 const halfFloat = ['EXT_color_buffer_float', 'EXT_color_buffer_half_float'].some((e) => renderer.extensions.has(e));
@@ -53,9 +70,9 @@ const unit = halfFloat ? 1 : 1 / 255;
 const density = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false, type: halfFloat ? THREE.HalfFloatType : THREE.UnsignedByteType,
                                                     minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
 const fieldMaterial = new THREE.ShaderMaterial({
-  uniforms: { ...quant, size: { value: dpr } },  // one CSS pixel, so the counts do not depend on the screen
-  vertexShader: `uniform vec3 lo; uniform vec3 step; uniform float size;
-    void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(lo + position * step, 1.0); gl_PointSize = size; }`,
+  uniforms: { ...quant, ...motion, size: { value: dpr } },  // one CSS pixel, so the counts do not depend on the screen
+  vertexShader: `uniform vec3 lo; uniform vec3 step; uniform float size; ${drift}
+    void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(drift(lo + position * step), 1.0); gl_PointSize = size; }`,
   fragmentShader: `void main() { gl_FragColor = vec4(${unit.toFixed(8)}); }`,
   blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
   transparent: true, depthTest: false, depthWrite: false,
@@ -77,9 +94,9 @@ const proj = { value: 1 };
 // `hi` is the highlighted cluster or group, drawn in ink. A recovered cluster shows its members only then,
 // in place of its sphere
 const memberMaterial = new THREE.ShaderMaterial({
-  uniforms: { size: { value: 3.2 * dpr }, ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 } },
-  vertexShader: `uniform float size; uniform float hi; attribute float cluster;
-    void main() { gl_Position = abs(cluster - hi) < 0.5 ? projectionMatrix * modelViewMatrix * vec4(position, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
+  uniforms: { ...motion, size: { value: 3.2 * dpr }, ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 } },
+  vertexShader: `uniform float size; uniform float hi; attribute float cluster; ${drift}
+    void main() { gl_Position = abs(cluster - hi) < 0.5 ? projectionMatrix * modelViewMatrix * vec4(drift(position), 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
       gl_PointSize = size; }`,
   fragmentShader: `uniform vec3 ink;
     void main() { vec2 c = gl_PointCoord - 0.5; if (dot(c, c) > 0.25) discard; gl_FragColor = vec4(ink, 1.0); }`,
@@ -87,11 +104,11 @@ const memberMaterial = new THREE.ShaderMaterial({
 });
 const sphereMaterial = new THREE.MeshLambertMaterial({ color: HEX.recovered });
 const ringMaterial = new THREE.ShaderMaterial({
-  uniforms: { color: { value: new THREE.Color(HEX.missed) }, ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 },
+  uniforms: { ...motion, color: { value: new THREE.Color(HEX.missed) }, ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 },
               line: { value: 1.2 * dpr }, scale: { value: dpr }, proj, least: { value: 2 * MIN_RADIUS * dpr } },
   vertexShader: `uniform float hi; uniform float scale; uniform float proj; uniform float least; attribute float radius; attribute float idx;
-    varying float vHi; varying float vSize;
-    void main() { vHi = abs(idx - hi) < 0.5 ? 1.0 : 0.0; vec4 p = modelViewMatrix * vec4(position, 1.0);
+    varying float vHi; varying float vSize; ${drift}
+    void main() { vHi = abs(idx - hi) < 0.5 ? 1.0 : 0.0; vec4 p = modelViewMatrix * vec4(drift(position), 1.0);
       vSize = max(least, 2.0 * radius * proj / -p.z) + 2.0 * scale * vHi;
       gl_Position = projectionMatrix * p; gl_PointSize = vSize; }`,
   fragmentShader: `uniform vec3 color; uniform vec3 ink; uniform float line; varying float vHi; varying float vSize;
@@ -100,11 +117,11 @@ const ringMaterial = new THREE.ShaderMaterial({
   transparent: true,
 });
 const squareMaterial = new THREE.ShaderMaterial({
-  uniforms: { color: { value: new THREE.Color(HEX.unverified) }, ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 },
+  uniforms: { ...motion, color: { value: new THREE.Color(HEX.unverified) }, ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 },
               size: { value: 7 * dpr }, line: { value: 1.3 * dpr } },
-  vertexShader: `uniform float size; uniform float hi; attribute float idx; varying float vHi;
+  vertexShader: `uniform float size; uniform float hi; attribute float idx; varying float vHi; ${drift}
     void main() { vHi = abs(idx - hi) < 0.5 ? 1.0 : 0.0;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = size * (1.0 + 0.4 * vHi); }`,
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(drift(position), 1.0); gl_PointSize = size * (1.0 + 0.4 * vHi); }`,
   fragmentShader: `uniform vec3 color; uniform vec3 ink; uniform float size; uniform float line; varying float vHi;
     void main() { vec2 c = abs(gl_PointCoord - 0.5); float m = max(c.x, c.y);
       if (m > 0.5 || m < 0.5 - line * (1.0 + vHi) / (size * (1.0 + 0.4 * vHi))) discard;
@@ -157,9 +174,24 @@ async function addLevel(region, k) {
   const p = points(g, fieldMaterial, 0);
   region.field.add(p);
   region.levels.push(p);
+  if (region.motions) addMotion(region, k);
   region.loaded += level.count;
   fieldStatus();
   needs = true;
+}
+
+const pmAttribute = async (region, file) => new THREE.BufferAttribute(new Int16Array(await (await region.get(file)).arrayBuffer()), 2);
+async function addMotion(region, k) {
+  region.levels[k].geometry.setAttribute('pm', await pmAttribute(region, region.meta.field.levels[k].pm));
+  needs = true;
+}
+// The members' and the field's proper motions, the first time the clock leaves now. Levels that arrive later
+// bring their own (addLevel)
+function loadMotions(region) {
+  region.motions ??= Promise.all([
+    pmAttribute(region, region.meta.members.pm).then((a) => region.members.geometry.setAttribute('pm', a)),
+    ...region.levels.map((_, k) => addMotion(region, k))]);
+  return region.motions;
 }
 
 function build(name, meta, membersBuf, cmdBuf, get) {
@@ -176,7 +208,16 @@ function build(name, meta, membersBuf, cmdBuf, get) {
   mg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   mg.setAttribute('cluster', new THREE.BufferAttribute(cluster, 1));
   group.add(points(mg, memberMaterial, 6));
-  region.members = { pos, cluster };
+  region.members = { pos, cluster, geometry: mg };
+  motion.pmStep.value = meta.pm_step;
+  const ref = meta.reference.pm.slice(0, REF_BINS);
+  ref.forEach(([l, b], k) => motion.ref.value[k].set(l, b));
+  motion.refCount.value = ref.length;
+  motion.refStep.value = meta.reference.step;
+  region.typical = (d) => {
+    const x = Math.max(0, Math.min(d / meta.reference.step - 0.5, ref.length - 1)), i = Math.floor(x), j = Math.min(i + 1, ref.length - 1);
+    return ref[i].map((v, c) => v + (ref[j][c] - v) * (x - i));
+  };
 
   // Recovered clusters: spheres as wide as the cluster in Hunt & Reffert (its tidal radius), but never
   // smaller than a few pixels. drawSpheres() sizes them every frame
@@ -191,12 +232,14 @@ function build(name, meta, membersBuf, cmdBuf, get) {
   rg.setAttribute('position', new THREE.Float32BufferAttribute(missed.flatMap(([c]) => c.xyz), 3));
   rg.setAttribute('radius', new THREE.Float32BufferAttribute(missed.map(([c]) => c.radius), 1));
   rg.setAttribute('idx', new THREE.Float32BufferAttribute(missed.map(([, i]) => i), 1));
+  rg.setAttribute('pm', new THREE.Float32BufferAttribute(missed.flatMap(([c]) => c.pm.map((v) => v / meta.pm_step)), 2));
   group.add(points(rg, ringMaterial, 4));
   region.missed = missed.map(([, i]) => i);
 
   const ug = new THREE.BufferGeometry();
   ug.setAttribute('position', new THREE.Float32BufferAttribute(meta.unverified.xyz, 3));
   ug.setAttribute('idx', new THREE.Float32BufferAttribute(meta.unverified.n.map((_, i) => i), 1));
+  ug.setAttribute('pm', new THREE.Float32BufferAttribute(meta.unverified.pm.map((v) => v / meta.pm_step), 2));
   region.unverified = points(ug, squareMaterial, 2);
   region.unverified.visible = $('#unverified').checked;
   group.add(region.unverified);
@@ -206,7 +249,7 @@ function build(name, meta, membersBuf, cmdBuf, get) {
   group.add(guides(region));
   for (const name of meta.named) {
     const i = meta.clusters.findIndex((c) => c.name === name);
-    if (i >= 0) label(region, meta.clusters[i].label, centre(region, i), 'named');
+    if (i >= 0) label(region, meta.clusters[i].label, centre(region, i), 'named').pm = meta.clusters[i].pm;
   }
   scene.add(group);
   fieldScene.add(field);
@@ -224,18 +267,32 @@ const sun = new THREE.DirectionalLight(0xffffff, 1.4);
 sun.position.set(-1, 1, 3);
 scene.add(sun);
 
-const inView = new THREE.Vector3();
-const depth = (xyz) => -inView.fromArray(xyz).applyMatrix4(camera.matrixWorldInverse).z;
+// Where a point is at the current time, as the shaders' drift() puts it; pm in mas/yr
+const along = new THREE.Vector3(), across = new THREE.Vector3(), radial = new THREE.Vector3();
+function drifted(p, pm, out = new THREE.Vector3()) {
+  const t = motion.myr.value, d = p.length();
+  out.copy(p);
+  if (!t || !pm || d < 1e-3) return out;
+  radial.copy(p).divideScalar(d);
+  along.set(-radial.y, radial.x, 0).normalize();
+  across.crossVectors(radial, along);
+  const k = d * MAS_MYR * t, [l, b] = motion.relative.value ? R.typical(d) : [0, 0];
+  return out.addScaledVector(along, k * (pm[0] - l)).addScaledVector(across, k * (pm[1] - b));
+}
+const clusterAt = (c, out = new THREE.Vector3()) => drifted(out.fromArray(c.xyz), c.pm, out);
+
+const inView = new THREE.Vector3(), at = new THREE.Vector3();
+const depth = (v) => -inView.copy(v).applyMatrix4(camera.matrixWorldInverse).z;
 // A cluster's radius on screen, in CSS pixels
-const screenRadius = (c) => Math.max(MIN_RADIUS, c.radius * proj.value / dpr / Math.max(depth(c.xyz), 1e-3));
+const screenRadius = (c) => Math.max(MIN_RADIUS, c.radius * proj.value / dpr / Math.max(depth(clusterAt(c, at)), 1e-3));
 
 const scaled = new THREE.Matrix4();
 function drawSpheres() {
   const on = hovered ?? pinned;
   R.found.forEach((i, k) => {
-    const c = R.meta.clusters[i], d = depth(c.xyz);  // behind the camera (d < 0), at its own size
+    const c = R.meta.clusters[i], p = clusterAt(c, at), d = depth(p);  // behind the camera (d < 0), at its own size
     const r = on?.kind === 'cluster' && on.i === i ? 0 : Math.max(c.radius, MIN_RADIUS * dpr * d / proj.value);
-    R.spheres.setMatrixAt(k, scaled.makeScale(r, r, r).setPosition(...c.xyz));
+    R.spheres.setMatrixAt(k, scaled.makeScale(r, r, r).setPosition(p));
   });
   R.spheres.instanceMatrix.needsUpdate = true;
 }
@@ -285,8 +342,10 @@ function label(region, text, at, kind, distance) {
   el.className = kind;
   el.textContent = text;
   labelsEl.append(el);
-  region.labels.push({ el, at, distance, rank: kind.includes('sun') ? 0 : kind === 'named' ? 1 : 2 });
+  const lab = { el, at, distance, rank: kind.includes('sun') ? 0 : kind === 'named' ? 1 : 2 };
+  region.labels.push(lab);
   region.labels.sort((a, b) => a.rank - b.rank);  // placeLabels() hides a label that would cover one placed before it
+  return lab;
 }
 
 const projected = new THREE.Vector3();
@@ -298,7 +357,7 @@ function placeLabels() {
     return [r.left - at.left, r.top - at.top, r.right - at.left, r.bottom - at.top];
   });
   for (const lab of R.labels) {
-    projected.copy(lab.at).project(camera);
+    drifted(lab.at, lab.pm, projected).project(camera);
     let off = projected.z > 1 || Math.abs(projected.x) > 1.05 || Math.abs(projected.y) > 1.05;
     if (!off) {
       const x = (projected.x + 1) / 2 * w + 7, y = (1 - projected.y) / 2 * h - 15;
@@ -315,8 +374,60 @@ function placeLabels() {
   }
 }
 
+let playing = null;  // the time and clock time the play started from
+// Where the pinned cluster or group is now, if the view is close enough to be looking at it
+function followed() {
+  if (!R || !pinned || flight || camera.position.distanceTo(controls.target) > 300) return null;
+  if (pinned.kind === 'cluster') return clusterAt(R.meta.clusters[pinned.i]);
+  const { xyz, pm } = R.meta.unverified;
+  return drifted(new THREE.Vector3().fromArray(xyz, 3 * pinned.i), [pm[2 * pinned.i], pm[2 * pinned.i + 1]]);
+}
+// Change where things are drawn, with the view travelling along with the pinned cluster, so it stays in sight
+function moving(change) {
+  const before = followed();
+  change();
+  if (before) {
+    const by = followed().sub(before);
+    controls.target.add(by);
+    camera.position.add(by);
+  }
+  needs = true;
+}
+function setTime(myr) {
+  moving(() => { motion.myr.value = Math.max(-SPAN, Math.min(SPAN, myr)); });
+  $('#myr').value = motion.myr.value;
+  const t = motion.myr.value;
+  $('#myr-out').textContent = Math.abs(t) < 0.005 ? 'now' : `${t > 0 ? '+' : '\u2212'}${Math.abs(t).toFixed(2)} Myr`;
+  $('#now').disabled = t === 0;
+  lastMove = performance.now();  // draws fewer field stars while the clock moves, as while the view moves
+  needs = true;
+}
+async function play() {
+  if (playing) return stop();
+  const region = R;
+  $('#play').textContent = 'Loading motions…';
+  await loadMotions(region);
+  if (region !== R) return;
+  if (motion.myr.value >= SPAN) setTime(-SPAN);
+  playing = { from: motion.myr.value, t0: performance.now() };
+  $('#play').textContent = 'Pause';
+  $('#play').setAttribute('aria-pressed', 'true');
+}
+function stop() {
+  playing = null;
+  $('#play').textContent = 'Play';
+  $('#play').setAttribute('aria-pressed', 'false');
+}
+function tick() {
+  const t = playing.from + (performance.now() - playing.t0) / 1000;  // a million years a second
+  setTime(t);
+  if (t >= SPAN) stop();
+}
+
 function clear() {
   if (!R) return;
+  stop();
+  setTime(0);
   scene.remove(R.group);
   fieldScene.remove(R.field);
   for (const g of [R.group, R.field]) g.traverse((o) => o.geometry?.dispose());
@@ -438,11 +549,15 @@ function pick(px, py) {
   const consider = (d, reach, hit) => { if (d < reach * reach && d < bestD) { bestD = d; best = hit; } };
   for (const i of [...R.found, ...R.missed]) {
     const c = R.meta.clusters[i];
-    consider(dist2(...c.xyz), screenRadius(c) + 4, { kind: 'cluster', i });
+    const p = clusterAt(c);
+    consider(dist2(p.x, p.y, p.z), screenRadius(c) + 4, { kind: 'cluster', i });
   }
   if (R.unverified.visible) {
-    const u = R.meta.unverified.xyz;
-    for (let i = 0; i < u.length / 3; i++) consider(dist2(u[3 * i], u[3 * i + 1], u[3 * i + 2]), 8, { kind: 'group', i });
+    const { xyz, pm } = R.meta.unverified, p = new THREE.Vector3();
+    for (let i = 0; i < xyz.length / 3; i++) {
+      drifted(p.fromArray(xyz, 3 * i), [pm[2 * i], pm[2 * i + 1]], p);
+      consider(dist2(p.x, p.y, p.z), 8, { kind: 'group', i });
+    }
   }
   return best;
 }
@@ -485,9 +600,10 @@ function zoomTo(view) {
 function goTo(hit) {
   if (hit.kind === 'cluster') {
     const at = centre(R, hit.i);
-    flyTo(at, viewDistance(R, hit.i, at));
+    flyTo(drifted(at, R.meta.clusters[hit.i].pm), viewDistance(R, hit.i, at));
   } else {
-    flyTo(new THREE.Vector3().fromArray(R.meta.unverified.xyz, 3 * hit.i), 40);
+    const { xyz, pm } = R.meta.unverified;
+    flyTo(drifted(new THREE.Vector3().fromArray(xyz, 3 * hit.i), [pm[2 * hit.i], pm[2 * hit.i + 1]]), 40);
   }
 }
 
@@ -619,6 +735,17 @@ $('#more').addEventListener('click', async () => {
   for (let k = region.levels.length; k < region.meta.field.levels.length && region === R; k++) await addLevel(region, k);
 });
 for (const b of document.querySelectorAll('[data-zoom]')) b.addEventListener('click', () => zoomTo(b.dataset.zoom));
+$('#play').addEventListener('click', () => play().catch(failed));
+$('#now').addEventListener('click', () => { stop(); setTime(0); });
+$('#sun-frame').addEventListener('change', (e) => moving(() => { motion.relative.value = e.target.checked ? 0 : 1; }));
+$('#myr').min = -SPAN;
+$('#myr').max = SPAN;
+$('#myr').addEventListener('input', async (e) => {
+  stop();
+  const region = R, t = +e.target.value;
+  await loadMotions(region).catch(failed);
+  if (region === R) setTime(t);
+});
 card.addEventListener('click', (e) => {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (act === 'unpin') { pin(null); $('#find').value = ''; }
@@ -667,6 +794,7 @@ new ResizeObserver(() => {
 function draw() {
   requestAnimationFrame(draw);
   if (flight) fly();
+  if (playing) tick();
   controls.update();
   const moving = performance.now() - lastMove < 250;
   if (!R || (!needs && !moving && performance.now() - lastMove > 400)) return;

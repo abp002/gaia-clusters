@@ -29,6 +29,9 @@ Issues: abp002/gaia-clusters
   member's own distance is ~25 times more uncertain than a cluster is big (decision in the README).
   The field is shuffled once (seed 0) and cut into nested levels of 65,536 × 2^k stars, quantized to
   uint16 between `quant.lo` and `quant.hi`; members are float32 (quantization steps show up close).
+  Proper motions (galactic, int16 steps of 0.01 mas/yr) go in `field-<k>-pm.bin` and `members-pm.bin`,
+  fetched only when the time slider moves; `meta.reference` is the field's median motion per 250 pc,
+  which the page takes off by default. `drift()` in the shaders and `drifted()` in JS must stay twins.
 - `viewer/`: static page, three.js 0.170 from jsdelivr, no build step. Clusters are spheres (instanced,
   tidal radius `rtpc`, at least 4 CSS px, resized every frame in `drawSpheres`). The field is rendered as a
   density (stars per pixel counted in a half-float buffer, shown in grey on a log scale). `viewer/data/`

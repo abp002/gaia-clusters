@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from gaia_clusters.region import REGIONS, SETUP
-from gaia_clusters.viewer import build, write
+from gaia_clusters.viewer import build, galactic_pm, write
 
 UNVERIFIED_RUN = 10  # the finest run; the README counts its groups that no Hunt & Reffert cluster owns
 
@@ -20,11 +20,13 @@ box = REGIONS[name]
 data = Path("data")
 stars = pd.read_parquet(data / f"{name}_stars.parquet").merge(
     pd.read_parquet(data / f"{name}_distances.parquet"), on="Source", how="left")
+stars["pm_l"], stars["pm_b"] = galactic_pm(stars.RA_ICRS, stars.DE_ICRS, stars.pmRA, stars.pmDE)
 labels = pd.read_parquet(data / f"{name}_labels_leaf.parquet")
 assert (labels.Source.to_numpy() == stars.Source.to_numpy()).all()
 members = pd.read_parquet(data / f"{name}_hr23_members.parquet")
 catalogue = pd.read_parquet(data / "hr23_clusters.parquet").set_index("Name")
 table = pd.read_csv(Path("results") / f"{name}_scores_leaf.csv", index_col="Name").join(catalogue.rtpc)
+table["pm_l"], table["pm_b"] = galactic_pm(*catalogue.loc[table.index, ["RA_ICRS", "DE_ICRS", "pmRA", "pmDE"]].to_numpy().T)
 
 built = build(stars, labels.drop(columns="Source"), members, table, SETUP[name]["named"], UNVERIFIED_RUN)
 scored = table[table.recoverable]

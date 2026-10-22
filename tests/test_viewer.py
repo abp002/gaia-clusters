@@ -5,7 +5,9 @@ import pandas as pd
 import pytest
 
 from gaia_clusters.score import score
-from gaia_clusters.viewer import build, cmd_stars, heliocentric, level_bounds, owners, quantize, write
+from gaia_clusters.region import galactic
+from gaia_clusters.viewer import (PM_STEP, build, cmd_stars, drift_reference, galactic_pm, heliocentric, level_bounds, owners, quantize,
+                                   quantize_pm, write)
 
 SIZES = [10, 20, 40, 80]
 
@@ -13,6 +15,36 @@ SIZES = [10, 20, 40, 80]
 def test_heliocentric_axes_point_to_the_centre_the_rotation_and_the_pole():
     xyz = heliocentric([0, 90, 180, 33], [0, 0, 0, 90], 1000)
     assert xyz == pytest.approx(np.array([[1000, 0, 0], [0, 1000, 0], [-1000, 0, 0], [0, 0, 1000]]), abs=1e-9)
+
+
+def test_galactic_proper_motion_is_how_far_the_star_moves_in_l_and_b():
+    rng = np.random.default_rng(1)
+    ra, dec = rng.uniform(0, 360, 50), rng.uniform(-80, 80, 50)
+    pmra, pmdec = rng.normal(0, 20, 50), rng.normal(0, 20, 50)
+    pm_l, pm_b = galactic_pm(ra, dec, pmra, pmdec)
+    years, mas = 100, 1 / 3.6e6  # degrees per mas
+    l0, b0 = galactic(ra, dec)
+    l1, b1 = galactic(ra + pmra * years * mas / np.cos(np.radians(dec)), dec + pmdec * years * mas)
+    dl = ((l1 - l0 + 180) % 360 - 180) * np.cos(np.radians(b0))
+    # a finite step on a curved sky: good to about 0.1 %, while a wrong sign or axis is off by the whole motion
+    assert dl / mas / years == pytest.approx(pm_l, rel=2e-3, abs=1e-3)
+    assert (b1 - b0) / mas / years == pytest.approx(pm_b, rel=2e-3, abs=1e-3)
+
+
+def test_quantized_proper_motions_come_back_within_half_a_step_and_clip():
+    pm = quantize_pm([1.234, -500.0, np.nan], [-0.005, 2.0, 1.0]) * PM_STEP
+    assert pm[0] == pytest.approx([1.23, -0.0], abs=PM_STEP / 2 + 1e-12)
+    assert pm[1, 0] == pytest.approx(-327.67) and pm[2, 0] == 0
+
+
+def test_the_reference_is_the_field_median_by_distance_and_thin_bins_take_a_nearer_one():
+    rng = np.random.default_rng(2)
+    d = np.r_[rng.uniform(0, 1000, 4000), rng.uniform(1500, 1750, 20)]  # nothing in 1000–1500, too few past 1500
+    pm_l, pm_b = -5 - d / 1000 + rng.normal(0, 0.05, len(d)), np.full(len(d), 0.5)
+    ref = drift_reference(d, pm_l, pm_b, far=1800, step=250, least=100)
+    assert ref.shape == (8, 2)
+    assert ref[:4, 0] == pytest.approx(-5 - np.array([125, 375, 625, 875]) / 1000, abs=0.03)
+    assert (ref[4:] == ref[3]).all() and (ref[:, 1] == 0.5).all()
 
 
 def test_each_level_doubles_and_the_last_ends_at_the_field():
@@ -58,13 +90,15 @@ def region():
     stars.loc[a, ["GLON", "GLAT"]] = np.column_stack([rng.normal(175, 0.1, 40), rng.normal(1, 0.1, 40)])
     stars.loc[a[0], "BP-RP"] = np.nan    # no colour: left out of the diagram
     stars.loc[n - 1, "r_med_geo"] = np.nan  # no distance: left out of the field
+    stars["pm_l"], stars["pm_b"] = stars.r_med_geo / 100, -stars.GLAT  # so a star's motion can be told from its place
     labels = pd.DataFrame(-1, index=stars.index, columns=[str(k) for k in SIZES])
     labels.loc[a] = 0
     labels.loc[np.r_[b, extra], "10"] = 1
     labels.loc[free, "10"] = 2
     members = pd.DataFrame({"Name": ["A"] * 40 + ["B"] * 20, "GaiaDR3": stars.Source.to_numpy()[np.r_[a, b]]})
     table = pd.DataFrame({"GLON": [175.0, 177.0], "GLAT": [1.0, -2.0], "dist50": [1500.0, 2500.0],
-                          "reliable": [True, False], "rtpc": [8.0, 12.5]}, index=pd.Index(["A", "B"], name="Name"))
+                          "reliable": [True, False], "rtpc": [8.0, 12.5], "pm_l": [-3.5, 1.25], "pm_b": [0.5, -2.0]},
+                         index=pd.Index(["A", "B"], name="Name"))
     for k in SIZES:
         s = score(stars.Source, labels[str(k)], members, table.index).set_index("Name")
         table["n"], table["recoverable"] = s.n, s.recoverable
@@ -101,4 +135,28 @@ def test_the_written_files_draw_every_star_once_and_in_the_right_place(tmp_path)
     assert counts(a) == [39, 0, 0] and counts(b) == [20, 25, 0]
 
     assert meta["unverified"]["count"] == 2 and sorted(meta["unverified"]["n"]) == [12, 45]
+
+
+def test_every_star_keeps_its_own_proper_motion(tmp_path):
+    stars, labels, members, table = region()
+    meta = write(tmp_path, build(stars, labels, members, table, {}, unverified_run=10), {"region": "test"})
+    step = meta["pm_step"]
+    assert [c["pm"] for c in meta["clusters"]] == [[-3.5, 0.5], [1.25, -2.0]]
+    ref = np.array(meta["reference"]["pm"])
+    assert len(ref) * meta["reference"]["step"] >= 4000 and np.isfinite(ref).all()
+
+    lo, hi = np.array(meta["quant"]["lo"]), np.array(meta["quant"]["hi"])
+    for lv in meta["field"]["levels"]:  # the field is shuffled: each level's motions must follow its positions
+        xyz = lo + np.frombuffer((tmp_path / lv["file"]).read_bytes(), "<u2").reshape(-1, 3) * (hi - lo) / 65535
+        pm = np.frombuffer((tmp_path / lv["pm"]).read_bytes(), "<i2").reshape(-1, 2) * step
+        assert len(pm) == lv["count"]
+        assert pm[:, 0] == pytest.approx(np.linalg.norm(xyz, axis=1) / 100, abs=step / 2 + (hi - lo).max() / 65535 / 100)
+        assert pm[:, 1] == pytest.approx(-np.degrees(np.arcsin(xyz[:, 2] / np.linalg.norm(xyz, axis=1))), abs=0.01)
+
+    pm = np.frombuffer((tmp_path / meta["members"]["pm"]).read_bytes(), "<i2").reshape(-1, 2) * step
+    assert np.sort(pm[:, 1]) == pytest.approx(np.sort(-stars.GLAT.to_numpy()[:40]), abs=step / 2)
+
+    u = np.array(meta["unverified"]["pm"]).reshape(-1, 2)
+    free = stars.iloc[85:97]  # the group of 12 that nobody owns
+    assert [free.pm_l.median(), free.pm_b.median()] == pytest.approx(u[np.array(meta["unverified"]["n"]) == 12][0], abs=1e-3)
     assert json.loads((tmp_path / "meta.json").read_text())["region"] == "test"

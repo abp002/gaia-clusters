@@ -173,9 +173,17 @@ card with its distance, recovery, purity and colour-magnitude diagram.
   doubling each time, so every level is a uniform sample of the field. The page shows the first at
   once, adds the rest as they arrive (on a phone, up to 524,288 unless asked) and draws fewer while
   the view moves. Like the sky maps above, it shows the field as a density on a log scale.
+- **Time:** a slider and a play button move every star along the sky at its proper motion, up to
+  5 Myr either way. By default, the field's median motion at the star's distance (in 250 pc bins) is
+  taken off: the Sun's own motion and the Galaxy's rotation shift every star at a distance alike, by
+  about 6 to 11 mas/yr in Carina against a spread of 1 to 5. A toggle leaves it in. A cluster's
+  members keep together while the field around them spreads. Most of these stars have no radial
+  velocity in Gaia, so nothing moves in depth, and the paths are straight lines: a picture of the
+  motions, not an orbit.
 
 `uv run scripts/export_viewer.py <region>` writes the page's data into `viewer/data/<region>/`
-(3.6 MB for Auriga, 15.5 MB for Carina) from what the scoring produces, and
+(5.9 MB for Auriga, 25.6 MB for Carina, of which the proper motions, loaded only when time moves, are
+2.3 and 10.1 MB) from what the scoring produces, and
 `python3 -m http.server -d viewer` serves the page locally.
 
 ## Run

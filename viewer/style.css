@@ -99,6 +99,13 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 .go { align-self: flex-start; border: 1px solid var(--ink); background: none; padding: 8px 14px; min-height: 38px; font: 500 13px var(--mono); cursor: pointer; }
 .go:hover { background: var(--ink); color: var(--paper); }
 
+.time { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 18px; border-top: 1px solid var(--ink); font-family: var(--mono); font-size: 13px; }
+.clock { display: inline-flex; align-items: center; gap: 10px; flex: 1 1 260px; }
+.clock input { flex: 1; accent-color: var(--ink); min-height: 36px; margin: 0; }
+#myr-out { min-width: 8.5em; }
+.more:disabled { opacity: 0.4; cursor: default; }
+.more:disabled:hover { background: none; color: inherit; }
+.time-note { flex: 1 1 100%; margin: 0; font-family: var(--sans); font-size: 14px; line-height: 1.45; color: var(--muted); max-width: 900px; }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; margin-top: 14px; font-size: 14px; }
 .find { display: inline-flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 13px; }
 .find select { font: 13px var(--mono); min-height: 36px; padding: 4px 8px; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); max-width: 260px; }
