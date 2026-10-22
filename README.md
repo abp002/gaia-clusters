@@ -167,6 +167,11 @@ card with its distance, recovery, purity and colour-magnitude diagram.
   recovery × purity). In the colour-magnitude diagram,
   blue stars are in both our group and Hunt & Reffert, red only in our group and grey only in
   Hunt & Reffert: blue against red is purity, blue against grey is recovery.
+- **Beside it, a proper-motion diagram** of the same stars, over up to 400 field stars that share the
+  cluster's patch of sky (three tidal radii, 0.3° to 3°) and distance (a quarter either way). A
+  cluster's stars move alike, so they clump while the field spreads. A 3D view of the whole region in
+  distance and proper motion was tried and set aside: at that scale the clusters sit inside the
+  field's band and do not stand out.
 - The groups that no Hunt & Reffert cluster owns (2,109 in Carina's min_cluster_size 10 run, 494 in
   Auriga's) stay hidden behind a toggle labelled unverified.
 - **Level of detail:** the field is stored in random order and sent in nested levels of 65,536 stars,
@@ -182,7 +187,7 @@ card with its distance, recovery, purity and colour-magnitude diagram.
   motions, not an orbit.
 
 `uv run scripts/export_viewer.py <region>` writes the page's data into `viewer/data/<region>/`
-(5.9 MB for Auriga, 25.6 MB for Carina, of which the proper motions, loaded only when time moves, are
+(6.1 MB for Auriga, 26.1 MB for Carina, of which the proper motions, loaded only when time moves, are
 2.3 and 10.1 MB) from what the scoring produces, and
 `python3 -m http.server -d viewer` serves the page locally.
 

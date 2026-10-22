@@ -154,10 +154,13 @@ async function show(name) {
     return r;
   };
   const meta = await (await get('meta.json')).json();
-  const [members, cmd] = await Promise.all([meta.members.file, meta.cmd.file].map(async (f) => (await get(f)).arrayBuffer()));
+  const [members, cmd, cmdPm, nearPm] = await Promise.all([meta.members.file, meta.cmd.file, meta.cmd.pm, meta.near.file]
+    .map(async (f) => (await get(f)).arrayBuffer()));
   if (token !== loading) return;
   clear();
   R = build(name, meta, members, cmd, get);
+  R.cmd.pm = new Int16Array(cmdPm);
+  R.near = new Int16Array(nearPm);
   showCard(null);
   for (let k = 0; k < meta.field.levels.length && token === loading; k++) {
     if (k > 0 && R.loaded + meta.field.levels[k].count > R.budget) break;
@@ -628,7 +631,9 @@ function clusterCard(i) {
   const group = !c.size ? `No group of the leaf runs holds any of its members.`
     : `${c.recovered ? 'Shown' : 'Closest'}: a group of ${num(c.size)} stars in the run with min_cluster_size ${c.run}.`
       + (others.length ? ` Also recovered at ${list(others)}.` : '');
-  const figure = cmdFigure(c);
+  const figure = c.cmd[1] ? `<div class="plots"><figure>${cmdFigure(c)}<figcaption>Colour and brightness</figcaption></figure>
+    <figure>${motionFigure(c)}<figcaption>Motion on the sky</figcaption></figure></div>
+    <div class="cmd-key"><span><i style="background:var(--recovered)"></i>in both</span><span><i style="background:var(--missed)"></i>ours only</span><span><i style="background:var(--theirs)"></i>theirs only</span><span><i style="background:var(--near)"></i>field around it</span></div>` : '';
   return `<div class="info"><div class="head"><div>${status}<h3>${esc(c.label)}</h3>${c.label !== plain ? `<span class="alias">${esc(plain)} in Hunt &amp; Reffert</span>` : ''}</div>
     ${same(pinned, { kind: 'cluster', i }) ? '<button type="button" class="close" data-act="unpin" aria-label="Close">×</button>' : ''}</div>
     <p class="meta">${kpc(c.dist)} · ${num(c.n)} members in our sample</p>
@@ -648,33 +653,61 @@ function groupCard(i) {
     test and a colour-magnitude classifier, which this project does not have, so it is not counted as a cluster.</p></div>`;
 }
 
-// Colour-magnitude diagram: G against BP − RP, blue in both, red ours only, grey theirs only
-function cmdFigure(c) {
-  const [start, count] = c.cmd;
-  if (!count) return '';
-  const { bp, g, cat } = R.cmd, W = 300, H = 250, L = 34, B = 38, T = 6, Rm = 6;
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for (let j = start; j < start + count; j++) {
-    x0 = Math.min(x0, bp[j]); x1 = Math.max(x1, bp[j]); y0 = Math.min(y0, g[j]); y1 = Math.max(y1, g[j]);
-  }
-  [x0, x1, y0, y1] = [x0 / 1000 - 0.1, x1 / 1000 + 0.1, y0 / 1000 - 0.3, y1 / 1000 + 0.3];
-  const sx = (x) => L + (x - x0) / (x1 - x0) * (W - L - Rm), sy = (y) => T + (y - y0) / (y1 - y0) * (H - T - B);
-  const dots = ['', '', ''], r = count > 1500 ? 1.1 : count > 300 ? 1.5 : 2;
-  for (let j = start; j < start + count; j++) {
-    const x = sx(bp[j] / 1000), y = sy(g[j] / 1000);
-    dots[cat[j]] += `M${(x - r).toFixed(1)} ${y.toFixed(1)}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
-  }
+// A small scatter plot: `layers` of [class, xs, ys] in drawing order, inside [x0, x1] × [y0, y1]; y grows
+// downwards unless `up`
+function scatter({ x0, x1, y0, y1, up, layers, xlabel, ylabel, label, W = 300, H = 250 }) {
+  const L = 34, B = 38, T = 6, Rm = 6;
+  const sx = (x) => L + (x - x0) / (x1 - x0) * (W - L - Rm);
+  const sy = (y) => up ? H - B - (y - y0) / (y1 - y0) * (H - T - B) : T + (y - y0) / (y1 - y0) * (H - T - B);
+  const count = layers.reduce((n, [, xs]) => n + xs.length, 0), r = count > 1500 ? 1.1 : count > 300 ? 1.5 : 2;
+  const paths = layers.map(([cls, xs, ys]) => {
+    let d = '';
+    xs.forEach((v, j) => {
+      if (v < x0 || v > x1 || ys[j] < y0 || ys[j] > y1) return;
+      const x = sx(v), y = sy(ys[j]);
+      d += `M${(x - r).toFixed(1)} ${y.toFixed(1)}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
+    });
+    return `<path class="${cls}" d="${d}"/>`;
+  }).join('');
   const tx = ticks(x0, x1, 4).map((v) => `<line class="axis" x1="${sx(v)}" x2="${sx(v)}" y1="${H - B}" y2="${H - B + 4}"/>
     <text x="${sx(v)}" y="${H - B + 15}" text-anchor="middle">${+v.toFixed(2)}</text>`).join('');
   const ty = ticks(y0, y1, 5).map((v) => `<line class="axis" x1="${L - 4}" x2="${L}" y1="${sy(v)}" y2="${sy(v)}"/>
     <text x="${L - 7}" y="${sy(v) + 3.5}" text-anchor="end">${+v.toFixed(1)}</text>`).join('');
-  const n = [0, 1, 2].map((k) => { let s = 0; for (let j = start; j < start + count; j++) s += cat[j] === k; return s; });
-  return `<svg class="cmd" viewBox="0 0 ${W} ${H}" role="img" aria-label="Colour-magnitude diagram of ${esc(c.label)}: ${n[0]} stars in both, ${n[1]} in our group only, ${n[2]} Hunt and Reffert members it misses">
-      <path class="theirs" d="${dots[2]}"/><path class="both" d="${dots[0]}"/><path class="ours" d="${dots[1]}"/>
+  return `<svg class="cmd" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">${paths}
       <line class="axis" x1="${L}" x2="${L}" y1="${T}" y2="${H - B}"/><line class="axis" x1="${L}" x2="${W - Rm}" y1="${H - B}" y2="${H - B}"/>
-      ${tx}${ty}<text x="${(L + W - Rm) / 2}" y="${H - 4}" text-anchor="middle">BP − RP</text><text x="${L + 6}" y="${T + 9}">G</text>
-    </svg>
-    <div class="cmd-key"><span><i style="background:var(--recovered)"></i>in both</span><span><i style="background:var(--missed)"></i>ours only</span><span><i style="background:var(--theirs)"></i>theirs only</span></div>`;
+      ${tx}${ty}<text x="${(L + W - Rm) / 2}" y="${H - 4}" text-anchor="middle">${xlabel}</text><text x="${L + 6}" y="${T + 9}">${ylabel}</text>
+    </svg>`;
+}
+
+// The stars of a cluster's diagrams by category, 0 in both, 1 ours only, 2 theirs only (drawn 2, 0, 1)
+function byCategory(c, x, y) {
+  const [start, count] = c.cmd, out = [[[], []], [[], []], [[], []]];
+  for (let j = start; j < start + count; j++) out[R.cmd.cat[j]][0].push(x(j)), out[R.cmd.cat[j]][1].push(y(j));
+  return [['theirs', ...out[2]], ['both', ...out[0]], ['ours', ...out[1]]];
+}
+
+// Colour-magnitude diagram: G against BP − RP, blue in both, red ours only, grey theirs only
+function cmdFigure(c) {
+  const { bp, g } = R.cmd, layers = byCategory(c, (j) => bp[j] / 1000, (j) => g[j] / 1000);
+  const xs = layers.flatMap((l) => l[1]), ys = layers.flatMap((l) => l[2]), n = layers.map((l) => l[1].length);
+  return scatter({ x0: Math.min(...xs) - 0.1, x1: Math.max(...xs) + 0.1, y0: Math.min(...ys) - 0.3, y1: Math.max(...ys) + 0.3,
+    layers, xlabel: 'BP − RP', ylabel: 'G',
+    label: `Colour-magnitude diagram of ${esc(c.label)}: ${n[1]} stars in both, ${n[2]} in our group only, ${n[0]} Hunt and Reffert members it misses` });
+}
+
+// Proper-motion diagram: the same stars as the colour-magnitude diagram, over the field that shares the cluster's
+// patch of sky and distance (light grey). Square, centred on the cluster's motion, wide enough for most of the field
+function motionFigure(c) {
+  const step = R.meta.pm_step, pm = R.cmd.pm, [o, k] = c.near, [cl, cb] = c.pm;
+  const field = [[], []];
+  for (let j = o; j < o + k; j++) field[0].push(R.near[2 * j] * step), field[1].push(R.near[2 * j + 1] * step);
+  const off = field[0].map((v, j) => Math.max(Math.abs(v - cl), Math.abs(field[1][j] - cb))).sort((a, b) => a - b);
+  const half = Math.max(1, 1.1 * (off[Math.floor(0.9 * (off.length - 1))] ?? 0));
+  const [theirs, both, ours] = byCategory(c, (j) => pm[2 * j] * step, (j) => pm[2 * j + 1] * step);
+  const layers = [['near', ...field], theirs, ours, both];  // the field stars in our group move with it: under the rest
+  return scatter({ x0: cl - half, x1: cl + half, y0: cb - half, y1: cb + half, up: true, W: 250, H: 250,
+    layers, xlabel: 'μl cos b (mas/yr)', ylabel: 'μb',
+    label: `Proper-motion diagram of ${esc(c.label)}: its stars against ${k} field stars in the same patch of sky and distance` });
 }
 
 function ticks(a, b, n) {

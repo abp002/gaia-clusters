@@ -8,6 +8,7 @@
   --missed: #c8553d;
   --field: #9a9a9a;
   --theirs: #b4b4ae;
+  --near: #d9dad5;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --sans: "Bricolage Grotesque", system-ui, sans-serif;
   color-scheme: light;
@@ -69,7 +70,7 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 
 .card { border-top: 1px solid var(--ink); padding: 18px 18px 20px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px 48px; min-height: 345px; }
 .card .info { flex: 1 1 340px; max-width: 600px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.card .plot { flex: 0 1 340px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card .plot { flex: 0 1 620px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .card h3 { margin: 0; font-size: 26px; line-height: 1.05; font-weight: 700; letter-spacing: -0.01em; }
 .card .alias { display: block; margin-top: 4px; font: 12px var(--mono); color: var(--faint); }
 .card .kicker { margin: 0; font: 500 12px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
@@ -93,6 +94,10 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 .cmd .both { fill: var(--recovered); }
 .cmd .ours { fill: var(--missed); }
 .cmd .theirs { fill: var(--theirs); }
+.cmd .near { fill: var(--near); }
+.plots { display: flex; flex-wrap: wrap; gap: 16px; }
+.plots figure { margin: 0; flex: 1 1 220px; max-width: 300px; }
+.plots figcaption { font: 12px var(--mono); color: var(--faint); margin-top: 2px; }
 .cmd-key { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 12px var(--mono); color: var(--muted); }
 .cmd-key span { display: inline-flex; align-items: center; gap: 6px; }
 .cmd-key i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }

@@ -13,6 +13,7 @@ FIRST_LEVEL = 1 << 16  # field stars in the coarsest level; each further level d
 PM_STEP = 0.01         # mas/yr per step of the 16-bit proper motions; ±327 mas/yr, past which they clip
 REFERENCE_STEP = 250   # pc: the distance bins of the field's typical proper motion
 REFERENCE_LEAST = 100  # stars a bin needs for its own median; a thinner one takes its nearer neighbour's
+NEAR_MOST = 400        # field stars at most behind a cluster's proper-motion diagram
 
 
 def heliocentric(l, b, d) -> np.ndarray:
@@ -49,6 +50,21 @@ def drift_reference(d, pm_l, pm_b, far: float, step: float = REFERENCE_STEP,
         return np.tile(np.median(pm, axis=0), (len(out), 1))
     take = np.maximum.accumulate(np.where(~np.isnan(out[:, 0]), np.arange(len(out)), have[0]))
     return out[take]
+
+
+def near(l, b, d, centre: tuple[float, float], dist: float, radius_pc: float, exclude: np.ndarray,
+         most: int = NEAR_MOST, rng: np.random.Generator | None = None) -> np.ndarray:
+    """The stars that share a cluster's patch of sky and distance, less `exclude` (its own): the field its
+    proper-motion diagram is drawn against. The patch reaches three tidal radii from the centre, kept
+    between 0.3° and 3°; the distance, a quarter of the cluster's either way, since a single star's
+    distance is that uncertain a few kiloparsecs out. At most `most`, picked at random, in index order."""
+    theta = np.clip(np.degrees(3 * radius_pc / dist), 0.3, 3.0)
+    l, b, (l0, b0) = np.radians(l), np.radians(b), np.radians(centre)
+    sep = 2 * np.degrees(np.arcsin(np.sqrt(np.sin((b - b0) / 2) ** 2 + np.cos(b) * np.cos(b0) * np.sin((l - l0) / 2) ** 2)))
+    pick = np.setdiff1d(np.flatnonzero((sep < theta) & (d > dist / 1.25) & (d < dist * 1.25)), exclude)
+    if len(pick) > most:
+        pick = np.sort((rng or np.random.default_rng(0)).choice(pick, most, replace=False))
+    return pick
 
 
 def quantize_pm(pm_l, pm_b) -> np.ndarray:
@@ -153,11 +169,19 @@ def build(stars: pd.DataFrame, labels: pd.DataFrame, members: pd.DataFrame, tabl
     cmd_idx = np.concatenate([i for i, _ in cmd])
     every = np.vstack([field_xyz, member_xyz, np.array([c["xyz"] for c in clusters]).reshape(-1, 3), unverified_xyz])
     pm = lambda idx: quantize_pm(stars.pm_l.to_numpy()[idx], stars.pm_b.to_numpy()[idx])
+    rng, around = np.random.default_rng(seed), []
+    for c, (i, _) in zip(clusters, cmd):
+        around.append(near(stars.GLON.to_numpy(), stars.GLAT.to_numpy(), stars.r_med_geo.to_numpy(),
+                           (table.GLON[c["name"]], table.GLAT[c["name"]]), c["dist"], c["radius"], i, rng=rng))
+    start = np.cumsum([0] + [len(a) for a in around])
+    for c, o, a in zip(clusters, start, around):
+        c["near"] = [int(o), len(a)]
     far = max(np.nanmax(stars.r_med_geo), max(np.linalg.norm(c["xyz"]) for c in clusters))
     reference = drift_reference(stars.r_med_geo.to_numpy()[field], stars.pm_l.to_numpy()[field],
                                 stars.pm_b.to_numpy()[field], far)
     return {"clusters": clusters, "field_xyz": field_xyz, "member_xyz": member_xyz, "member_cluster": member_cluster,
             "field_pm": pm(field), "member_pm": pm(drawn), "unverified_pm": med[["pm_l", "pm_b"]].to_numpy(),
+            "cmd_pm": pm(cmd_idx), "near_pm": pm(np.concatenate(around).astype(int)),
             "reference": reference,
             "member_index": drawn,
             "unverified_xyz": unverified_xyz, "unverified_n": g.size().to_numpy(),
@@ -187,6 +211,8 @@ def write(out: Path, built: dict, summary: dict) -> dict:
     (out / "members.bin").write_bytes(built["member_xyz"].astype("<f4").tobytes()
                                       + built["member_cluster"].astype("<u2").tobytes())
     (out / "members-pm.bin").write_bytes(built["member_pm"].astype("<i2").tobytes())
+    (out / "cmd-pm.bin").write_bytes(built["cmd_pm"].astype("<i2").tobytes())  # row for row with cmd.bin
+    (out / "near-pm.bin").write_bytes(built["near_pm"].astype("<i2").tobytes())
     (out / "cmd.bin").write_bytes(np.round(built["cmd_bp_rp"] * 1000).astype("<i2").tobytes()
                                   + np.round(built["cmd_g"] * 1000).astype("<u2").tobytes()
                                   + built["cmd_cat"].astype("u1").tobytes())
@@ -200,7 +226,8 @@ def write(out: Path, built: dict, summary: dict) -> dict:
         "members": {"file": "members.bin", "pm": "members-pm.bin", "count": len(built["member_xyz"])},
         "pm_step": PM_STEP,
         "reference": {"step": REFERENCE_STEP, "pm": np.round(built["reference"], 3).tolist()},
-        "cmd": {"file": "cmd.bin", "count": len(built["cmd_cat"])},
+        "cmd": {"file": "cmd.bin", "pm": "cmd-pm.bin", "count": len(built["cmd_cat"])},
+        "near": {"file": "near-pm.bin", "count": len(built["near_pm"])},
         "clusters": clusters,
         "unverified": {"count": len(built["unverified_n"]), "n": built["unverified_n"].tolist(),
                        "xyz": np.round(built["unverified_xyz"], 1).ravel().tolist(),

@@ -6,7 +6,7 @@ import pytest
 
 from gaia_clusters.score import score
 from gaia_clusters.region import galactic
-from gaia_clusters.viewer import (PM_STEP, build, cmd_stars, drift_reference, galactic_pm, heliocentric, level_bounds, owners, quantize,
+from gaia_clusters.viewer import (PM_STEP, build, cmd_stars, drift_reference, galactic_pm, near, heliocentric, level_bounds, owners, quantize,
                                    quantize_pm, write)
 
 SIZES = [10, 20, 40, 80]
@@ -45,6 +45,17 @@ def test_the_reference_is_the_field_median_by_distance_and_thin_bins_take_a_near
     assert ref.shape == (8, 2)
     assert ref[:4, 0] == pytest.approx(-5 - np.array([125, 375, 625, 875]) / 1000, abs=0.03)
     assert (ref[4:] == ref[3]).all() and (ref[:, 1] == 0.5).all()
+
+
+def test_the_field_near_a_cluster_shares_its_patch_and_distance_and_leaves_out_its_own():
+    l = np.array([100.0, 100.5, 101.0, 100.2, 100.2, 100.1, 100.0])
+    b = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.0])
+    d = np.array([1000, 1000, 1000, 700, 1300, 1000, 1000.0])
+    # 3 tidal radii of 4 pc at 1 kpc: 0.69°. Out: 1° away, 30 % nearer, 30 % farther, and star 6 (its own)
+    assert near(l, b, d, (100.0, 0.0), 1000, 4.0, exclude=np.array([6])).tolist() == [0, 1, 5]
+    assert near(l, b, d, (100.0, 0.0), 1000, 0.1, exclude=np.array([], int)).tolist() == [0, 5, 6]  # 0.3° at least
+    many = near(np.full(1000, 100.0), np.zeros(1000), np.full(1000, 1000.0), (100.0, 0.0), 1000, 4.0, np.array([], int), most=50)
+    assert len(many) == 50 and (np.diff(many) > 0).all()
 
 
 def test_each_level_doubles_and_the_last_ends_at_the_field():
@@ -155,6 +166,14 @@ def test_every_star_keeps_its_own_proper_motion(tmp_path):
 
     pm = np.frombuffer((tmp_path / meta["members"]["pm"]).read_bytes(), "<i2").reshape(-1, 2) * step
     assert np.sort(pm[:, 1]) == pytest.approx(np.sort(-stars.GLAT.to_numpy()[:40]), abs=step / 2)
+
+    a, b = meta["clusters"]  # the diagram's stars carry their own motion: A's are its 39 stars with a colour
+    cmd = np.frombuffer((tmp_path / meta["cmd"]["pm"]).read_bytes(), "<i2").reshape(-1, 2) * step
+    assert len(cmd) == meta["cmd"]["count"]
+    assert np.sort(cmd[a["cmd"][0]:sum(a["cmd"]), 1]) == pytest.approx(np.sort(-stars.GLAT.to_numpy()[1:40]), abs=step / 2)
+    around = np.frombuffer((tmp_path / meta["near"]["file"]).read_bytes(), "<i2").reshape(-1, 2) * step
+    assert len(around) == meta["near"]["count"] == a["near"][1] + b["near"][1] and b["near"][0] == a["near"][1]
+    assert (np.abs(around[:a["near"][1], 0] * 100 - 1500) < 1500 * 0.25 + 1).all()  # pm_l is distance / 100
 
     u = np.array(meta["unverified"]["pm"]).reshape(-1, 2)
     free = stars.iloc[85:97]  # the group of 12 that nobody owns

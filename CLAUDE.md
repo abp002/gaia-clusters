@@ -32,6 +32,8 @@ Issues: abp002/gaia-clusters
   Proper motions (galactic, int16 steps of 0.01 mas/yr) go in `field-<k>-pm.bin` and `members-pm.bin`,
   fetched only when the time slider moves; `meta.reference` is the field's median motion per 250 pc,
   which the page takes off by default. `drift()` in the shaders and `drifted()` in JS must stay twins.
+  Each card's proper-motion diagram reads `cmd-pm.bin` (row for row with `cmd.bin`) and `near-pm.bin`
+  (field stars around each cluster, `near()` in viewer.py; offset and count in `clusters[].near`).
 - `viewer/`: static page, three.js 0.170 from jsdelivr, no build step. Clusters are spheres (instanced,
   tidal radius `rtpc`, at least 4 CSS px, resized every frame in `drawSpheres`). The field is rendered as a
   density (stars per pixel counted in a half-float buffer, shown in grey on a log scale). `viewer/data/`
