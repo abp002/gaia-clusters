@@ -2,6 +2,7 @@
 // The files come from scripts/export_viewer.py; their layout is in src/gaia_clusters/viewer.py.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TOURS } from './tour.js';
 
 THREE.ColorManagement.enabled = false;  // hex in, hex out: the colours of the README figures
 
@@ -473,8 +474,40 @@ function tick() {
   if (t >= SPAN) stop();
 }
 
+// The guided tour (tour.js): each stop pins its cluster and flies to it, or shows the whole region
+let stop_ = -1;
+function tour(k) {
+  const stops = TOURS[R?.name] ?? [];
+  if (k < 0 || k >= stops.length) return endTour();
+  stop_ = k;
+  const s = stops[k], i = s.cluster ? R.meta.clusters.findIndex((c) => c.name === s.cluster) : -1;
+  if (i >= 0) {  // from a few hundred parsecs, so its neighbours show too
+    pin({ kind: 'cluster', i });
+    const at = centre(R, i);
+    flyTo(drifted(at, R.meta.clusters[i].pm), Math.max(4 * viewDistance(R, i, at), 0.6 * R.meta.clusters[i].dist));
+    $('#find').value = String(i);
+  } else {
+    pin(null);
+    $('#find').value = '';
+    zoomTo('home');
+  }
+  $('#tour-text').textContent = s.text(R.meta.clusters[i], R.meta, { kpc, num, pct, age, purityMisses }).replace(/\s+/g, ' ');
+  $('#tour-step').textContent = `${k + 1} of ${stops.length}`;
+  $('#tour-back').disabled = k === 0;
+  $('#tour-next').textContent = k === stops.length - 1 ? 'Done' : 'Next';
+  $('#tour').hidden = false;
+  $('#tour-next').focus({ preventScroll: true });
+}
+// Missed clusters whose closest group holds most of their members: they fail on purity
+const purityMisses = (m) => m.clusters.filter((c) => !c.recovered && c.recovery > 0.5).length;
+function endTour() {
+  stop_ = -1;
+  $('#tour').hidden = true;
+}
+
 function clear() {
   if (!R) return;
+  endTour();
   stop();
   setTime(0);
   scene.remove(R.group);
@@ -837,7 +870,17 @@ card.addEventListener('click', (e) => {
   if (act === 'unpin') { pin(null); $('#find').value = ''; }
   if (act === 'go') goTo({ kind: 'cluster', i: +e.target.closest('[data-act]').dataset.i });
 });
-addEventListener('keydown', (e) => { if (e.key === 'Escape' && pinned) { pin(null); $('#find').value = ''; } });
+addEventListener('keydown', (e) => {
+  if (stop_ >= 0 && e.key === 'Escape') return endTour();
+  if (stop_ >= 0 && (e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.target.closest('input, select')) {
+    return tour(stop_ + (e.key === 'ArrowRight' ? 1 : -1));
+  }
+  if (e.key === 'Escape' && pinned) { pin(null); $('#find').value = ''; }
+});
+$('#tour-start').addEventListener('click', () => tour(0));
+$('#tour-next').addEventListener('click', () => tour(stop_ + 1));
+$('#tour-back').addEventListener('click', () => tour(stop_ - 1));
+$('#tour-close').addEventListener('click', endTour);
 
 let down = null, queued = null;
 canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; flight = null; });

@@ -60,6 +60,10 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 .zoom button { font: 500 12px var(--mono); padding: 4px 10px; min-height: 30px; border: 0; background: none; cursor: pointer; }
 .zoom button + button { border-left: 1px solid var(--ink); }
 .zoom button:hover { background: var(--ink); color: var(--paper); }
+.tour { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding: 14px 18px; border-top: 1px solid var(--ink); background: #ecece7; }
+.tour p { flex: 1 1 420px; margin: 0; font-size: 16px; line-height: 1.5; }
+.tour-step { font-size: 12px; color: var(--faint); flex: none; }
+.tour-buttons { display: flex; gap: 8px; flex: none; }
 .galaxy { flex: none; width: 168px; height: 178px; align-self: flex-end; margin-bottom: -6px; }
 .galaxy .disc { fill: var(--rule); opacity: 0.45; }
 .galaxy .centre { stroke: var(--ink); stroke-width: 0.25; }

@@ -50,7 +50,7 @@
 <div class="view" id="view-box">
 <canvas id="view" role="img" aria-label="Three-dimensional map of the region: field stars in grey, recovered clusters as blue spheres, missed clusters as red rings. Use the list below the map to open any cluster."></canvas>
 <div class="labels" id="labels" aria-hidden="true"></div>
-<div class="zoom" role="group" aria-label="View"><button type="button" data-zoom="home">Whole region</button><button type="button" data-zoom="near">First kiloparsec</button></div>
+<div class="zoom" role="group" aria-label="View"><button type="button" data-zoom="home">Whole region</button><button type="button" data-zoom="near">First kiloparsec</button><button type="button" id="tour-start">Tour</button></div>
 <p class="hint mono" id="hint">Drag to turn · scroll or pinch to zoom · right-drag or two fingers to pan</p>
 </div>
 <div class="time">
@@ -60,6 +60,11 @@
 <button type="button" class="more" id="now" disabled>Now</button>
 <label class="toggle"><input type="checkbox" id="sun-frame"><span>As seen from the Sun</span></label>
 <p class="time-note" id="time-note">Each star drifts along the sky at its proper motion, a million years a second, less the typical motion of the field at its distance: the Sun's own motion and the Galaxy's rotation shift every star there alike, and would hide the rest. Gaia has no radial velocity for most of these stars, so nothing moves in depth, and every path is a straight line.</p>
+</div>
+<div class="tour" id="tour" role="region" aria-label="Guided tour" hidden>
+<span class="tour-step mono" id="tour-step"></span>
+<p id="tour-text" aria-live="polite"></p>
+<div class="tour-buttons"><button type="button" class="more" id="tour-back">Back</button><button type="button" class="more" id="tour-next">Next</button><button type="button" class="more" id="tour-close">Close</button></div>
 </div>
 <aside class="card" id="card" aria-live="polite"></aside>
 </div>

@@ -175,6 +175,9 @@ card with its distance, recovery, purity and colour-magnitude diagram.
 - **Colour by age** recolours spheres and rings by Hunt & Reffert's median age (`logAge50`) in four
   bands, lighter for younger: under 10 Myr, 10–100 Myr, 0.1–1 Gyr, over 1 Gyr. Shape still tells
   recovered from missed. Each card gives the age with its 16th–84th percentile range.
+- **Tour** (top right of the map) walks through six or seven clusters per region, from the nearest
+  and richest to misses on purity and the farthest. The stops and their text are in
+  [viewer/tour.js](viewer/tour.js); every number in them comes from the region's data.
 - Under the map, **Where it works** charts the recovery rate by distance and by members in our
   sample, both regions side by side, with the counts. The export writes them into each region's
   `meta.json` (`rates`) from the scores, with the bins `score_region.py` reports in.
