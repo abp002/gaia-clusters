@@ -25,7 +25,7 @@ labels = pd.read_parquet(data / f"{name}_labels_leaf.parquet")
 assert (labels.Source.to_numpy() == stars.Source.to_numpy()).all()
 members = pd.read_parquet(data / f"{name}_hr23_members.parquet")
 catalogue = pd.read_parquet(data / "hr23_clusters.parquet").set_index("Name")
-table = pd.read_csv(Path("results") / f"{name}_scores_leaf.csv", index_col="Name").join(catalogue.rtpc)
+table = pd.read_csv(Path("results") / f"{name}_scores_leaf.csv", index_col="Name").join(catalogue[["rtpc", "logAge16", "logAge50", "logAge84"]])
 table["pm_l"], table["pm_b"] = galactic_pm(*catalogue.loc[table.index, ["RA_ICRS", "DE_ICRS", "pmRA", "pmDE"]].to_numpy().T)
 
 built = build(stars, labels.drop(columns="Source"), members, table, SETUP[name]["named"], UNVERIFIED_RUN)

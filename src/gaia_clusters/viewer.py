@@ -115,7 +115,8 @@ def build(stars: pd.DataFrame, labels: pd.DataFrame, members: pd.DataFrame, tabl
     `stars` needs Source, GLON, GLAT, Gmag, BP-RP, r_med_geo (Bailer-Jones) and pm_l, pm_b (galactic_pm);
     `labels` the leaf runs, one column per min_cluster_size, row for row with `stars`; `members` the Hunt &
     Reffert members in the region; `table` score_region's table, indexed by name, with Hunt & Reffert's
-    tidal radius (rtpc) and the cluster's proper motion as pm_l, pm_b. A recovered cluster's group, from the run
+    tidal radius (rtpc), age (logAge16, logAge50, logAge84) and the cluster's proper motion as pm_l, pm_b.
+    A recovered cluster's group, from the run
     it is shown with, is drawn at the cluster's catalogue distance: a member's own distance is uncertain
     by far more than the cluster is big. Every other star is field, at its own distance.
     """
@@ -137,7 +138,8 @@ def build(stars: pd.DataFrame, labels: pd.DataFrame, members: pd.DataFrame, tabl
             "reliable": bool(r.reliable), "dist": round(float(r.dist50)), "n": int(r.n), "run": k,
             "size": len(group), "recovery": float(r[f"recovery_{k}"]), "purity": float(r[f"purity_{k}"]),
             "runs": [s for s in sizes if r[f"recovered_{s}"]], "how": None if r.recovered else how_missed(r, sizes),
-            "radius": float(r.rtpc), "xyz": heliocentric(r.GLON, r.GLAT, r.dist50)[0], "pm": [float(r.pm_l), float(r.pm_b)]})
+            "radius": float(r.rtpc), "xyz": heliocentric(r.GLON, r.GLAT, r.dist50)[0], "pm": [float(r.pm_l), float(r.pm_b)],
+            "age": [round(float(r[f"logAge{q}"]), 2) for q in (16, 50, 84)]})
 
     owner = owners(groups, len(stars))
     recovered = [i for i, c in enumerate(clusters) if c["recovered"]]

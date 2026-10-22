@@ -44,6 +44,8 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 .figure { margin: 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); padding: 16px 0 18px; }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 26px; font-family: var(--mono); font-size: 13px; color: var(--muted); margin-bottom: 14px; }
 .legend span { display: inline-flex; align-items: center; gap: 8px; }
+.age-key { gap: 6px 14px !important; flex-wrap: wrap; }
+.age-key i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .stage { border: 1px solid var(--ink); }
 .view { position: relative; height: clamp(380px, 54vh, 600px); min-width: 0; overflow: hidden; cursor: grab; touch-action: none; }
 .view:active { cursor: grabbing; }

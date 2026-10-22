@@ -108,7 +108,8 @@ def region():
     labels.loc[free, "10"] = 2
     members = pd.DataFrame({"Name": ["A"] * 40 + ["B"] * 20, "GaiaDR3": stars.Source.to_numpy()[np.r_[a, b]]})
     table = pd.DataFrame({"GLON": [175.0, 177.0], "GLAT": [1.0, -2.0], "dist50": [1500.0, 2500.0],
-                          "reliable": [True, False], "rtpc": [8.0, 12.5], "pm_l": [-3.5, 1.25], "pm_b": [0.5, -2.0]},
+                          "reliable": [True, False], "rtpc": [8.0, 12.5], "pm_l": [-3.5, 1.25], "pm_b": [0.5, -2.0],
+                          "logAge16": [7.9, 8.5], "logAge50": [8.0, 8.7], "logAge84": [8.1, 8.9]},
                          index=pd.Index(["A", "B"], name="Name"))
     for k in SIZES:
         s = score(stars.Source, labels[str(k)], members, table.index).set_index("Name")

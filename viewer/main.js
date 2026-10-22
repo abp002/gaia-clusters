@@ -15,12 +15,17 @@ const MIN_RADIUS = 4;                        // CSS pixels: no cluster is drawn 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const MAS_MYR = 4.8481e-3;                     // radians a star crosses in a million years at 1 mas/yr
 const SPAN = 5;                                // Myr either side of now that the time slider reaches
+// Colour by age: Hunt & Reffert's median log10(age / yr) in four bands, an ordinal one-hue ramp, lighter = younger
+const AGES = [{ below: 7, label: 'under 10 Myr', hex: '#86b6ef' }, { below: 8, label: '10–100 Myr', hex: '#3987e5' },
+              { below: 9, label: '0.1–1 Gyr', hex: '#1c5cab' }, { below: Infinity, label: 'over 1 Gyr', hex: '#0d366b' }];
+const ageBand = (c) => AGES.find((a) => c.age[1] < a.below);
 const RAD = Math.PI / 180;
 const num = new Intl.NumberFormat('en-GB').format;
 const pct = (x) => `${Math.round(100 * x)} %`;
 const kpc = (pc) => `${(pc / 1000).toFixed(pc < 1000 ? 2 : 1)} kpc`;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const $ = (s) => document.querySelector(s);
+$('#age-key').innerHTML = `age: ${AGES.map((a) => `<span><i style="background:${a.hex}"></i>${a.label}</span>`).join('')}`;
 const toward = (l, b, d) => new THREE.Vector3(Math.cos(b * RAD) * Math.cos(l * RAD), Math.cos(b * RAD) * Math.sin(l * RAD),
                                               Math.sin(b * RAD)).multiplyScalar(d);
 
@@ -102,18 +107,18 @@ const memberMaterial = new THREE.ShaderMaterial({
     void main() { vec2 c = gl_PointCoord - 0.5; if (dot(c, c) > 0.25) discard; gl_FragColor = vec4(ink, 1.0); }`,
   transparent: true, depthTest: false,
 });
-const sphereMaterial = new THREE.MeshLambertMaterial({ color: HEX.recovered });
+const sphereMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });  // each sphere's colour is its instance colour (paint)
 const ringMaterial = new THREE.ShaderMaterial({
-  uniforms: { ...motion, color: { value: new THREE.Color(HEX.missed) }, ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 },
+  uniforms: { ...motion, ink: { value: new THREE.Color(HEX.ink) }, hi: { value: -1 },
               line: { value: 1.2 * dpr }, scale: { value: dpr }, proj, least: { value: 2 * MIN_RADIUS * dpr } },
   vertexShader: `uniform float hi; uniform float scale; uniform float proj; uniform float least; attribute float radius; attribute float idx;
-    varying float vHi; varying float vSize; ${drift}
-    void main() { vHi = abs(idx - hi) < 0.5 ? 1.0 : 0.0; vec4 p = modelViewMatrix * vec4(drift(position), 1.0);
+    attribute vec3 tint; varying vec3 vTint; varying float vHi; varying float vSize; ${drift}
+    void main() { vHi = abs(idx - hi) < 0.5 ? 1.0 : 0.0; vTint = tint; vec4 p = modelViewMatrix * vec4(drift(position), 1.0);
       vSize = max(least, 2.0 * radius * proj / -p.z) + 2.0 * scale * vHi;
       gl_Position = projectionMatrix * p; gl_PointSize = vSize; }`,
-  fragmentShader: `uniform vec3 color; uniform vec3 ink; uniform float line; varying float vHi; varying float vSize;
+  fragmentShader: `uniform vec3 ink; uniform float line; varying vec3 vTint; varying float vHi; varying float vSize;
     void main() { float r = length(gl_PointCoord - 0.5) * vSize, w = line * (1.0 + vHi);
-      if (r > 0.5 * vSize || r < 0.5 * vSize - w) discard; gl_FragColor = vec4(mix(color, ink, vHi), 1.0); }`,
+      if (r > 0.5 * vSize || r < 0.5 * vSize - w) discard; gl_FragColor = vec4(mix(vTint, ink, vHi), 1.0); }`,
   transparent: true,
 });
 const squareMaterial = new THREE.ShaderMaterial({
@@ -236,7 +241,9 @@ function build(name, meta, membersBuf, cmdBuf, get) {
   rg.setAttribute('radius', new THREE.Float32BufferAttribute(missed.map(([c]) => c.radius), 1));
   rg.setAttribute('idx', new THREE.Float32BufferAttribute(missed.map(([, i]) => i), 1));
   rg.setAttribute('pm', new THREE.Float32BufferAttribute(missed.flatMap(([c]) => c.pm.map((v) => v / meta.pm_step)), 2));
-  group.add(points(rg, ringMaterial, 4));
+  rg.setAttribute('tint', new THREE.Float32BufferAttribute(new Float32Array(3 * missed.length), 3));
+  region.rings = points(rg, ringMaterial, 4);
+  group.add(region.rings);
   region.missed = missed.map(([, i]) => i);
 
   const ug = new THREE.BufferGeometry();
@@ -259,9 +266,23 @@ function build(name, meta, membersBuf, cmdBuf, get) {
   intro(meta);
   fillFind(meta);
   $('#unverified-label').textContent = `Show the ${num(meta.unverified.count)} unverified groups`;
+  paint(region);
   galaxy(name);
   frame(region);
   return region;
+}
+
+// Spheres blue and rings red, or both by age
+const tint = new THREE.Color();
+function paint(region) {
+  const byAge = $('#by-age').checked, colour = (c, plain) => tint.set(byAge ? ageBand(c).hex : plain);
+  region.found.forEach((i, k) => region.spheres.setColorAt(k, colour(region.meta.clusters[i], HEX.recovered)));
+  region.spheres.instanceColor.needsUpdate = true;
+  const t = region.rings.geometry.attributes.tint;
+  region.missed.forEach((i, k) => colour(region.meta.clusters[i], HEX.missed).toArray(t.array, 3 * k));
+  t.needsUpdate = true;
+  $('#age-key').hidden = !byAge;
+  needs = true;
 }
 
 const sphereGeometry = new THREE.SphereGeometry(1, 32, 16);
@@ -636,12 +657,18 @@ function clusterCard(i) {
     <div class="cmd-key"><span><i style="background:var(--recovered)"></i>in both</span><span><i style="background:var(--missed)"></i>ours only</span><span><i style="background:var(--theirs)"></i>theirs only</span><span><i style="background:var(--near)"></i>field around it</span></div>` : '';
   return `<div class="info"><div class="head"><div>${status}<h3>${esc(c.label)}</h3>${c.label !== plain ? `<span class="alias">${esc(plain)} in Hunt &amp; Reffert</span>` : ''}</div>
     ${same(pinned, { kind: 'cluster', i }) ? '<button type="button" class="close" data-act="unpin" aria-label="Close">×</button>' : ''}</div>
-    <p class="meta">${kpc(c.dist)} · ${num(c.n)} members in our sample</p>
+    <p class="meta">${kpc(c.dist)} · ${num(c.n)} members in our sample · ${age(c)}</p>
     <div class="scores"><div><span>Recovery</span><b>${pct(c.recovery)}</b></div><div><span>Purity</span><b>${pct(c.purity)}</b></div></div>
     <p>${group} ${c.reliable ? 'Highly reliable in Hunt &amp; Reffert.' : 'Not rated highly reliable by Hunt &amp; Reffert.'}</p>
     <button type="button" class="go" data-act="go" data-i="${i}">Go to ${esc(c.label)}</button></div>
     ${figure ? `<div class="plot">${figure}</div>` : ''}`;
 }
+
+// The age in Hunt & Reffert: median, with the 16th and 84th percentiles
+const age = (c) => {
+  const [lo, mid, hi] = c.age.map((v) => 10 ** v / 1e6), gyr = mid >= 1000, f = (v) => gyr ? (v / 1000).toFixed(1) : String(+v.toPrecision(2));
+  return `${f(mid)} ${gyr ? 'Gyr' : 'Myr'} old (${f(lo)}–${f(hi)})`;
+};
 
 const list = (xs) => xs.length < 2 ? `${xs[0]}` : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`;
 
@@ -754,6 +781,7 @@ if (coarse) $('#hint').textContent = 'Drag to turn · pinch to zoom · two finge
 const failed = (err) => { $('#field-status').textContent = `Could not load the region: ${err.message}`; };
 for (const b of document.querySelectorAll('[data-region]')) b.addEventListener('click', () => show(b.dataset.region).catch(failed));
 $('#find').addEventListener('change', (e) => { if (e.target.value !== '') pin({ kind: 'cluster', i: +e.target.value }, true); });
+$('#by-age').addEventListener('change', () => R && paint(R));
 $('#unverified').addEventListener('change', (e) => {
   if (!R) return;
   R.unverified.visible = e.target.checked;
