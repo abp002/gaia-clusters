@@ -1,8 +1,10 @@
 """Our isochrone ages against Hunt & Reffert's, as docs/protocol-ages.md reports them.
 
 uv run scripts/fit_ages.py auriga && uv run scripts/fit_ages.py carina
-uv run scripts/compare_ages.py    # results/ages.md, figures/ages.png
+uv run scripts/compare_ages.py              # results/ages.md, figures/ages.png
+uv run scripts/compare_ages.py --post-hoc   # the post hoc fits (fit_ages.py --post-hoc): ages_posthoc.*
 """
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -18,8 +20,8 @@ BANDS = pd.IntervalIndex.from_breaks([-np.inf, 7, 8, 9, np.inf], closed="left")
 BAND_LABELS = ["under 10 Myr", "10–100 Myr", "0.1–1 Gyr", "over 1 Gyr"]
 WITHIN = 0.3
 
-results = Path("results")
-t = pd.concat([pd.read_csv(results / f"{r}_ages.csv").assign(region=r) for r in REGION_HEX], ignore_index=True)
+results, suffix = Path("results"), "_posthoc" if "--post-hoc" in sys.argv else ""
+t = pd.concat([pd.read_csv(results / f"{r}_ages{suffix}.csv").assign(region=r) for r in REGION_HEX], ignore_index=True)
 given = t[t.given]
 d = given.delta
 
@@ -60,7 +62,7 @@ md += ["", f"Extinction: median ours − theirs {(given.av - given.AV50).median(
 no = t[~t.given]
 if len(no):
     md += ["| Why no age | Clusters |", "|---|---|"] + [f"| {why} | {n} |" for why, n in no.reason.value_counts().items()]
-(results / "ages.md").write_text("\n".join(md) + "\n")
+(results / f"ages{suffix}.md").write_text("\n".join(md) + "\n")
 print("\n".join(md))
 
 plt.rcParams.update({"font.size": 9, "axes.edgecolor": INK, "axes.labelcolor": INK, "xtick.color": INK,
@@ -86,4 +88,4 @@ b.axhline(0, c=INK, lw=0.8)
 b.set(xscale="log", xlabel="Stars in our group (5 ≤ G ≤ 18)", ylabel="Δ = ours − Hunt & Reffert (dex)")
 b.set_title("Δ by the number of stars", loc="left", fontsize=10.5)
 fig.tight_layout()
-fig.savefig(Path("figures") / "ages.png", dpi=130, bbox_inches="tight")
+fig.savefig(Path("figures") / f"ages{suffix}.png", dpi=130, bbox_inches="tight")

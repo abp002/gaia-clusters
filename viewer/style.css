@@ -101,6 +101,10 @@ h3 { margin: 0 0 10px; font-size: 19px; font-weight: 650; }
 .cmd .ours { fill: var(--missed); }
 .cmd .theirs { fill: var(--theirs); }
 .cmd .near { fill: var(--near); }
+.cmd .iso-ours, .cmd .iso-theirs { fill: none; stroke: var(--ink); stroke-width: 1.2; }
+.cmd .iso-theirs { stroke: var(--faint); stroke-dasharray: 4 3; }
+.cmd-key .iso-key { display: inline-block; width: 14px; border-top: 1.5px solid var(--ink); }
+.cmd-key .iso-key.theirs { border-top: 1.5px dashed var(--faint); }
 .plots { display: flex; flex-wrap: wrap; gap: 16px; }
 .plots figure { margin: 0; flex: 1 1 220px; max-width: 300px; }
 .plots figcaption { font: 12px var(--mono); color: var(--faint); margin-top: 2px; }

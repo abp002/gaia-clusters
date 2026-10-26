@@ -436,6 +436,10 @@ const farEdge = (meta) => Math.ceil(Math.max(meta.reach, ...meta.clusters.map((c
 // Where the regions sit in the Milky Way, seen from the north Galactic pole: a schematic disc in kiloparsecs,
 // the centre at the origin and the Sun 8.2 kpc below it. Longitude l points at (−sin l, −cos l) on screen.
 const R0 = 8.2, DISC = 15;
+// PARSEC isochrones for the cards' diagrams (export_viewer.py), shared by the regions; none if not exported
+const isochrones = fetch('data/isochrones.json').then((r) => r.ok ? r.json() : null).catch(() => null);
+let ISO = null;
+isochrones.then((v) => { ISO = v; if (R) showCard(hovered ?? pinned); });
 const metas = Promise.all([...document.querySelectorAll('[data-region]')].map(async ({ dataset: { region } }) =>
   ({ region, meta: await (await fetch(`data/${region}/meta.json`)).json() })));
 const wedges = metas.then((ms) => ms.map(({ region, meta: m }) => ({ region, l: m.box.l, far: farEdge(m) / 1000 })));
@@ -821,15 +825,29 @@ function clusterCard(i) {
       + (others.length ? ` Also recovered at ${list(others)}.` : '');
   const figure = c.cmd[1] ? `<div class="plots"><figure>${cmdFigure(c)}<figcaption>Colour and brightness</figcaption></figure>
     <figure>${motionFigure(c)}<figcaption>Motion on the sky</figcaption></figure></div>
-    <div class="cmd-key"><span><i style="background:var(--recovered)"></i>in both</span><span><i style="background:var(--missed)"></i>ours only</span><span><i style="background:var(--theirs)"></i>theirs only</span><span><i style="background:var(--near)"></i>field around it</span></div>` : '';
+    <div class="cmd-key"><span><i style="background:var(--recovered)"></i>in both</span><span><i style="background:var(--missed)"></i>ours only</span><span><i style="background:var(--theirs)"></i>theirs only</span><span><i style="background:var(--near)"></i>field around it</span>${c.fit && ISO ? '<span><b class="iso-key"></b>our isochrone</span>' : ''}${c.hr && ISO ? '<span><b class="iso-key theirs"></b>Hunt &amp; Reffert\'s</span>' : ''}</div>` : '';
   return `<div class="info"><div class="head"><div>${status}<h3>${esc(c.label)}</h3>${c.label !== plain ? `<span class="alias">${esc(plain)} in Hunt &amp; Reffert</span>` : ''}</div>
     ${same(pinned, { kind: 'cluster', i }) ? '<button type="button" class="close" data-act="unpin" aria-label="Close">×</button>' : ''}</div>
     <p class="meta">${kpc(c.dist)} · ${num(c.n)} members in our sample · ${age(c)}</p>
     <div class="scores"><div><span>Recovery</span><b>${pct(c.recovery)}</b></div><div><span>Purity</span><b>${pct(c.purity)}</b></div></div>
     <p>${group} ${c.reliable ? 'Highly reliable in Hunt &amp; Reffert.' : 'Not rated highly reliable by Hunt &amp; Reffert.'}</p>
+    ${ages(c)}
     <button type="button" class="go" data-act="go" data-i="${i}">Go to ${esc(c.label)}</button></div>
     ${figure ? `<div class="plot">${figure}</div>` : ''}`;
 }
+
+// Our isochrone age beside Hunt & Reffert's (docs/protocol-ages.md), if the cluster was fitted
+function ages(c) {
+  const f = c.fit;
+  if (!f) return '';
+  const ours = f.given ? years(f.age, f.range) : `none (${esc(f.why)})`;
+  return `<dl class="facts"><dt>Age, Hunt &amp; Reffert</dt><dd>${years(c.age[1], [c.age[0], c.age[2]])}</dd>
+    <dt>Age, our isochrone fit</dt><dd>${ours}${f.calibration ? ' · calibration cluster' : ''}</dd></dl>`;
+}
+const years = (mid, [lo, hi]) => {
+  const [a, b, m] = [lo, hi, mid].map((v) => 10 ** v / 1e6), gyr = m >= 1000, f = (v) => gyr ? (v / 1000).toFixed(1) : String(+v.toPrecision(2));
+  return `${f(m)} ${gyr ? 'Gyr' : 'Myr'} (${f(a)}–${f(b)})`;
+};
 
 // The age in Hunt & Reffert: median, with the 16th and 84th percentiles
 const age = (c) => {
@@ -849,7 +867,8 @@ function groupCard(i) {
 
 // A small scatter plot: `layers` of [class, xs, ys] in drawing order, inside [x0, x1] × [y0, y1]; y grows
 // downwards unless `up`
-function scatter({ x0, x1, y0, y1, up, layers, xlabel, ylabel, label, W = 300, H = 250 }) {
+let clips = 0;
+function scatter({ x0, x1, y0, y1, up, layers, lines = [], xlabel, ylabel, label, W = 300, H = 250 }) {
   const L = 34, B = 38, T = 6, Rm = 6;
   const sx = (x) => L + (x - x0) / (x1 - x0) * (W - L - Rm);
   const sy = (y) => up ? H - B - (y - y0) / (y1 - y0) * (H - T - B) : T + (y - y0) / (y1 - y0) * (H - T - B);
@@ -867,7 +886,11 @@ function scatter({ x0, x1, y0, y1, up, layers, xlabel, ylabel, label, W = 300, H
     <text x="${sx(v)}" y="${H - B + 15}" text-anchor="middle">${+v.toFixed(2)}</text>`).join('');
   const ty = ticks(y0, y1, 5).map((v) => `<line class="axis" x1="${L - 4}" x2="${L}" y1="${sy(v)}" y2="${sy(v)}"/>
     <text x="${L - 7}" y="${sy(v) + 3.5}" text-anchor="end">${+v.toFixed(1)}</text>`).join('');
-  return `<svg class="cmd" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">${paths}
+  const clip = `clip${++clips}`;  // the lines stop at the axes
+  const curves = lines.map(([cls, xs, ys]) => `<path class="${cls}" clip-path="url(#${clip})" d="M${xs.map((v, j) =>
+    `${sx(v).toFixed(1)} ${sy(ys[j]).toFixed(1)}`).join('L')}"/>`).join('');
+  return `<svg class="cmd" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">
+      <clipPath id="${clip}"><rect x="${L}" y="${T}" width="${W - L - Rm}" height="${H - T - B}"/></clipPath>${paths}${curves}
       <line class="axis" x1="${L}" x2="${L}" y1="${T}" y2="${H - B}"/><line class="axis" x1="${L}" x2="${W - Rm}" y1="${H - B}" y2="${H - B}"/>
       ${tx}${ty}<text x="${(L + W - Rm) / 2}" y="${H - 4}" text-anchor="middle">${xlabel}</text><text x="${L + 6}" y="${T + 9}">${ylabel}</text>
     </svg>`;
@@ -880,12 +903,26 @@ function byCategory(c, x, y) {
   return [['theirs', ...out[2]], ['both', ...out[0]], ['ours', ...out[1]]];
 }
 
+// The isochrones of our fit (solid) and of Hunt & Reffert's (dashed), reddened by A_V and shifted by the
+// distance modulus as the fit has them: the grid age nearest to theirs
+function isochroneLines(c) {
+  const e = R.meta.extinction;
+  if (!ISO || !e) return [];
+  const line = (cls, age, av, dm) => {
+    const k = ISO.ages.reduce((b, a, i) => Math.abs(a - age) < Math.abs(ISO.ages[b] - age) ? i : b, 0), p = ISO.curves[k];
+    const xs = [], ys = [];
+    for (let j = 0; j < p.length; j += 2) xs.push(p[j] + (e.BP - e.RP) * av), ys.push(p[j + 1] + dm + e.G * av);
+    return [cls, xs, ys];
+  };
+  return [c.hr && line('iso-theirs', c.age[1], c.hr.av, c.hr.dm), c.fit && line('iso-ours', c.fit.age, c.fit.av, c.fit.dm)].filter(Boolean);
+}
+
 // Colour-magnitude diagram: G against BP − RP, blue in both, red ours only, grey theirs only
 function cmdFigure(c) {
   const { bp, g } = R.view.cmd, layers = byCategory(c, (j) => bp[j] / 1000, (j) => g[j] / 1000);
   const xs = layers.flatMap((l) => l[1]), ys = layers.flatMap((l) => l[2]), n = layers.map((l) => l[1].length);
   return scatter({ x0: Math.min(...xs) - 0.1, x1: Math.max(...xs) + 0.1, y0: Math.min(...ys) - 0.3, y1: Math.max(...ys) + 0.3,
-    layers, xlabel: 'BP − RP', ylabel: 'G',
+    layers, lines: isochroneLines(c), xlabel: 'BP − RP', ylabel: 'G',
     label: `Colour-magnitude diagram of ${esc(c.label)}: ${n[1]} stars in both, ${n[2]} in our group only, ${n[0]} Hunt and Reffert members it misses` });
 }
 

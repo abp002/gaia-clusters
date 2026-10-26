@@ -27,6 +27,8 @@ class Settings:
     faintest: float = 18.0      # apparent G: fainter stars are left out, and the model is cut there
     brightest: float = 5.0      # apparent G: likewise at the bright end, where Gaia saturates
     neighbours: int = 32        # isochrone points summed for each star
+    faint_quantile: float | None = None  # post hoc, not the protocol's: cut each cluster at this quantile of
+                                         # its own stars' G, where its sample thins out, if brighter than faintest
 
 
 class Grid:
@@ -85,10 +87,10 @@ class Likelihood:
     So an isochrone is penalised for predicting stars where there are none, such as a turnoff brighter
     than the brightest star."""
 
-    def __init__(self, grid: Grid, colour: np.ndarray, g: np.ndarray, dm0: float, sdm: float):
+    def __init__(self, grid: Grid, colour: np.ndarray, g: np.ndarray, dm0: float, sdm: float, faintest: float):
         s = grid.settings
-        self.grid, self.colour, self.g, self.dm0, self.sdm = grid, colour, g, dm0, sdm
-        area = max(np.ptp(colour), 0.5) * (s.faintest - s.brightest)
+        self.grid, self.colour, self.g, self.dm0, self.sdm, self.faintest = grid, colour, g, dm0, sdm, faintest
+        area = max(np.ptp(colour), 0.5) * (faintest - s.brightest)
         self.background = s.outliers / area  # the uniform component's density in the diagram
         self.norm = (1 - s.outliers) / (2 * np.pi * s.sigma_colour * s.sigma_g)
 
@@ -97,7 +99,7 @@ class Likelihood:
             return 1e12
         s, grid = self.grid.settings, self.grid
         shown = grid.points[k][:, 1] + dm + A_G * av
-        inside = grid.weights[k][(shown >= s.brightest) & (shown <= s.faintest)].sum()
+        inside = grid.weights[k][(shown >= s.brightest) & (shown <= self.faintest)].sum()
         if inside <= 0:
             return 1e12
         x = (self.colour[idx] - (A_BP - A_RP) * av) / s.sigma_colour
@@ -123,10 +125,13 @@ def fit(grid: Grid, colour, g, parallax, boots: int = 50, window: float = 0.5, m
     """The age, extinction and distance modulus of one cluster's stars (BP − RP, G, parallax in mas).
     Bootstrap fits search ages within `window` dex of the best, starting from its A_V and dm there."""
     s = grid.settings
+    colour, g, parallax = np.asarray(colour), np.asarray(g), np.asarray(parallax)
     keep = np.isfinite(colour) & np.isfinite(g) & (g <= s.faintest) & (g >= s.brightest)
-    colour, g, parallax = np.asarray(colour)[keep], np.asarray(g)[keep], np.asarray(parallax)[keep]
+    faintest = min(s.faintest, np.quantile(g[keep], s.faint_quantile)) if s.faint_quantile else s.faintest
+    keep &= g <= faintest
+    colour, g, parallax = colour[keep], g[keep], parallax[keep]
     dm0, sdm = prior(parallax)
-    like = Likelihood(grid, colour, g, dm0, sdm)
+    like = Likelihood(grid, colour, g, dm0, sdm, faintest)
     starts = [(av, dm0) for av in (0.2, 1.0, 2.5, 4.5)]
     profile = [like.best(k, starts) for k in range(len(grid.ages))]
     k = int(np.argmin([p[0] for p in profile]))

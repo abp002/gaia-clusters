@@ -1,7 +1,8 @@
 """Fit PARSEC isochrones to each recovered cluster's group, as fixed in docs/protocol-ages.md.
 
 uv run scripts/fit_ages.py <region>                  # the test clusters: results/<region>_ages.csv
-uv run scripts/fit_ages.py <region> --calibration    # only the calibration clusters, with a figure
+uv run scripts/fit_ages.py <region> --calibration    # the calibration clusters: _ages_calibration.csv and a figure
+uv run scripts/fit_ages.py <region> --post-hoc       # post hoc: each cluster cut where its stars thin out, _ages_posthoc.csv
 
 Needs score_region.py's labels and scores. The isochrones are downloaded once into data/.
 """
@@ -17,18 +18,19 @@ import pandas as pd
 from joblib import Parallel, delayed
 
 from gaia_clusters import fetch
-from gaia_clusters.ages import A_BP, A_G, A_RP, Grid, fit
+from gaia_clusters.ages import A_BP, A_G, A_RP, Grid, Settings, fit
 from gaia_clusters.score import shown_run
 
 CALIBRATION = ["NGC_3532", "Trumpler_19", "NGC_2099"]
 MIN_STARS = 30  # stars with a BP − RP colour in our group
 
-name, calibration = sys.argv[1], "--calibration" in sys.argv
+name, calibration, post_hoc = sys.argv[1], "--calibration" in sys.argv, "--post-hoc" in sys.argv
+POST_HOC = Settings(faint_quantile=0.9)  # chosen once, after the test run showed the faint edge (protocol-ages.md)
 data, results, figures = Path("data"), Path("results"), Path("figures")
 path = data / "parsec_solar.parquet"
 if not path.exists():
     fetch.isochrones().to_parquet(path)
-grid = Grid(pd.read_parquet(path))
+grid = Grid(pd.read_parquet(path), POST_HOC if post_hoc else Settings())
 
 stars = pd.read_parquet(data / f"{name}_stars.parquet")
 labels = pd.read_parquet(data / f"{name}_labels_leaf.parquet")
@@ -66,9 +68,8 @@ out = out.join(catalogue[["logAge16", "logAge50", "logAge84", "AV50", "MOD50", "
 out["delta"] = (out.age - out.logAge50).round(3)
 print(out.drop(columns=["dist50"]).to_string())
 
-if not calibration:
-    out.to_csv(results / f"{name}_ages.csv")
-else:  # each calibration cluster's diagram with the best isochrone and Hunt & Reffert's
+out.to_csv(results / f"{name}_ages{'_calibration' if calibration else ''}{'_posthoc' if post_hoc else ''}.csv")
+if calibration:  # each calibration cluster's diagram with the best isochrone and Hunt & Reffert's
     fig, axes = plt.subplots(1, len(out), figsize=(4 * len(out), 5), squeeze=False)
     table_iso = pd.read_parquet(path)
     for a, (n, r) in zip(axes[0], out.iterrows()):

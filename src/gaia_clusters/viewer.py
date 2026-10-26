@@ -278,3 +278,19 @@ def write(out: Path, built: dict, summary: dict, runs: dict[int, dict] | None = 
         "clusters": clusters} | write_view(out, built) | {"runs": {"protocol": list(protocol), "sweep": sweep}}
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, separators=(",", ":")))
     return meta
+
+
+def isochrone_curves(table: pd.DataFrame, phases: int, step: float = 0.03) -> dict:
+    """PARSEC isochrones for the cards' diagrams: per age, (BP − RP, M_G) points at least `step` mag apart
+    along the curve, rounded to the millimagnitude. The page reddens and shifts them by a fit's A_V and dm."""
+    ages, curves = [], []
+    for age, iso in table[table.label <= phases].groupby(table.logAge.round(2)):
+        xy = np.column_stack([iso.G_BPmag - iso.G_RPmag, iso.Gmag])
+        keep, last = [0], xy[0]
+        for j in range(1, len(xy)):
+            if np.hypot(*(xy[j] - last)) >= step or j == len(xy) - 1:
+                keep.append(j)
+                last = xy[j]
+        ages.append(float(age))
+        curves.append(np.round(xy[keep], 3).ravel().tolist())
+    return {"ages": ages, "curves": curves}

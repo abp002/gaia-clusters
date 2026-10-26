@@ -23,6 +23,11 @@ Issues: abp002/gaia-clusters
   cluster with most reference members, not the biggest: the field can come out as one huge cluster.
 - `predict.py`: what one region's recovery rates by members bin predict for another (Jeffreys Beta
   per bin, then binomial). It is the replication test of `docs/protocol-carina.md`.
+- `ages.py` + `scripts/fit_ages.py`, `scripts/compare_ages.py`: PARSEC isochrones (`fetch.isochrones`, CMD 3.9 form,
+  `data/parsec_solar.parquet`) fitted per recovered group, IMF-weighted mixture likelihood, parallax prior on the
+  distance modulus, bootstrap interval (`docs/protocol-ages.md`; settings frozen in `Settings`). The protocol's bar
+  failed (56 % within 0.3 dex): distant groups truncated by the parallax cut fit as ~10 Myr. `--post-hoc`
+  (`faint_quantile=0.9`) is reported beside it, never instead. The CMD service needs `truststore` (no intermediate cert).
 - `viewer.py` + `scripts/export_viewer.py`: the 3D viewer's data. Field stars at their Bailer-Jones
   geometric distance (`data/<region>_distances.parquet`, from GAVO `gedr3dist.litewithdist` with the
   star query's polygon and cuts); members of a recovered cluster at the cluster's `dist50`, because a

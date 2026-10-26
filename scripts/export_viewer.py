@@ -5,15 +5,17 @@ uv run scripts/score_region.py <region>    # leaf labels and scores
 uv run scripts/sweep_region.py <region>    # optional: more leaf runs, for the min_cluster_size slider
 uv run scripts/export_viewer.py <region>
 """
+import json
 import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from gaia_clusters.ages import A_BP, A_G, A_RP, Settings
 from gaia_clusters.region import REGIONS, SETUP
 from gaia_clusters.score import DISTANCE_LABELS, MEMBERS_LABELS, score
-from gaia_clusters.viewer import build, galactic_pm, rates, view, write
+from gaia_clusters.viewer import build, galactic_pm, isochrone_curves, rates, view, write
 
 UNVERIFIED_RUN = 10  # the finest run; the README counts its groups that no Hunt & Reffert cluster owns
 
@@ -26,7 +28,7 @@ stars["pm_l"], stars["pm_b"] = galactic_pm(stars.RA_ICRS, stars.DE_ICRS, stars.p
 labels = pd.read_parquet(data / f"{name}_labels_leaf.parquet")
 assert (labels.Source.to_numpy() == stars.Source.to_numpy()).all()
 members = pd.read_parquet(data / f"{name}_hr23_members.parquet")
-catalogue = pd.read_parquet(data / "hr23_clusters.parquet").set_index("Name")
+catalogue = pd.read_parquet(data / "hr23_clusters.parquet").set_index("Name")  # also AV50, MOD50 below
 table = pd.read_csv(Path("results") / f"{name}_scores_leaf.csv", index_col="Name").join(catalogue[["rtpc", "logAge16", "logAge50", "logAge84"]])
 table["pm_l"], table["pm_b"] = galactic_pm(*catalogue.loc[table.index, ["RA_ICRS", "DE_ICRS", "pmRA", "pmDE"]].to_numpy().T)
 
@@ -61,6 +63,21 @@ half_width = ((stars.r_hi_geo - stars.r_lo_geo) / 2).to_numpy()
 summary["depth"] = {"sigma": round(float(np.median(half_width[built["member_index"]]))),
                     "r50": round(float(catalogue.r50pc.reindex(scored.index[scored.recovered]).median()), 1)}
 summary["named"] = list(SETUP[name]["named"])
+# Our isochrone ages (fit_ages.py), test and calibration clusters, beside Hunt & Reffert's fit
+fits = [Path("results") / f"{name}_ages{suffix}.csv" for suffix in ("", "_calibration")]
+if all(f.exists() for f in fits):
+    ages = pd.concat([pd.read_csv(f, index_col="Name").assign(calibration=bool(k)) for k, f in enumerate(fits)])
+    for c in built["clusters"]:
+        if c["name"] in ages.index:
+            a = ages.loc[c["name"]]
+            c["fit"] = {"age": round(float(a.age), 2), "range": [round(float(a.age16), 2), round(float(a.age84), 2)],
+                        "av": round(float(a.av), 3), "dm": round(float(a.dm), 3), "given": bool(a.given),
+                        "why": None if a.given else a.reason, "calibration": bool(a.calibration)}
+        c["hr"] = {"av": round(float(catalogue.AV50[c["name"]]), 3), "dm": round(float(catalogue.MOD50[c["name"]]), 3)}
+    summary["extinction"] = {"G": A_G, "BP": A_BP, "RP": A_RP}
+    iso = Path("viewer/data/isochrones.json")
+    iso.write_text(json.dumps(isochrone_curves(pd.read_parquet(data / "parsec_solar.parquet"), Settings().phases),
+                              separators=(",", ":")))
 out = Path("viewer/data") / name
 meta = write(out, built, summary, runs, protocol=[int(c) for c in labels.columns if c != "Source"])
 

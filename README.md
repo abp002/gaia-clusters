@@ -151,6 +151,41 @@ diagram 0.04 out of 1. Matching their members is not the same as being a cluster
 
 Full tables in [results/carina.md](results/carina.md), one row per cluster in `results/carina_scores_*.csv`.
 
+## Ages from isochrones: a second method that does not confirm the first
+
+The viewer colours clusters by Hunt & Reffert's age, which a neural network gives from each cluster's
+diagram. To check those ages with a plainer method, PARSEC isochrones (solar metallicity) are fitted to
+each recovered group's colour-magnitude diagram: age, extinction and distance modulus, with a parallax
+prior. Each isochrone point is weighted by the share of stars the IMF puts there, so an isochrone pays
+for predicting stars the group does not have. The rule, the clusters and the bar were fixed in
+[docs/protocol-ages.md](docs/protocol-ages.md) before any fit; the fit's settings were frozen on three
+calibration clusters (NGC 3532, Trumpler 19, M37) before the test run.
+
+![Our ages against Hunt & Reffert's](figures/ages.png)
+
+**The bar is not met.** Of 170 test clusters with at least 30 stars, 141 get an age; 79 of them
+(56 %) are within 0.3 dex of Hunt & Reffert's, with a Spearman correlation of 0.64, against a bar of
+two thirds and 0.8. The median difference is 0.00 dex, but the misses are not noise:
+
+- **One failure mode makes most of the large misses.** 23 clusters come out more than 0.8 dex younger
+  than Hunt & Reffert's, at a median 3.7 kpc: groups whose stars stop around G = 16.5 get ages of a few
+  million years (median 7 Myr) where Hunt & Reffert give a median 210 Myr. Our parallax cut
+  (parallax_over_error > 5) empties the faint end at that distance, the model still expects stars down
+  to G = 18, and a very young isochrone, whose pre-main sequence bends away there, explains the sudden
+  edge best. The protocol named this risk and cut at G = 18; that was not enough.
+- **Post hoc**, cutting each cluster at its own 90th percentile in G, chosen once and not tuned: 134 get
+  an age, 80 (60 %) within 0.3 dex, Spearman 0.82. The young misfits mostly go, and the bar is still not
+  met ([results/ages_posthoc.md](results/ages_posthoc.md)).
+- **What remains is a stretch.** Between 0.1 and 1 Gyr ours are older by a median 0.19 dex (post hoc);
+  between 10 and 100 Myr, younger by 0.14. The three calibration clusters were already 0.16 to 0.27 dex
+  older. Whether our fits overshoot or theirs pull towards the middle, this test cannot say.
+- **The rich clusters agree:** 9 of the 10 with 300 stars or more are within 0.3 dex, and our extinctions
+  follow theirs closely (Spearman 0.95, ours 0.18 mag higher).
+
+So the age colouring in the viewer stays Hunt & Reffert's, as a catalogue value, not as something this
+project reproduces. Each card shows both ages and draws both isochrones over the diagram, so a miss
+like the ones above can be seen. Full tables in [results/ages.md](results/ages.md).
+
 ## In three dimensions
 
 The viewer in [viewer/](viewer/) shows both regions in space, seen from above the wedge that each
@@ -224,6 +259,7 @@ uv run scripts/pleiades.py              # downloads into data/ on first run (~15
 uv run scripts/fetch_region.py auriga   # stars and distances from GAVO, Hunt & Reffert members from VizieR
 uv run scripts/score_region.py auriga   # HDBSCAN runs, scores, figures (same for carina)
 uv run scripts/sweep_region.py auriga   # optional: leaf runs from 10 to 240 for the viewer's slider
+uv run scripts/fit_ages.py auriga       # isochrone ages (also --calibration, --post-hoc); then compare_ages.py
 uv run scripts/export_viewer.py auriga  # the viewer's data
 blender -b -P scripts/render.py -- auriga  # a still from the viewer's data, figures/render-auriga.jpg
 ```
