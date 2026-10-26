@@ -183,6 +183,12 @@ card with its distance, recovery, purity and colour-magnitude diagram.
   `meta.json` (`rates`) from the scores, with the bins `score_region.py` reports in.
 - The groups that no Hunt & Reffert cluster owns (2,109 in Carina's min_cluster_size 10 run, 494 in
   Auriga's) stay hidden behind a toggle labelled unverified.
+- **One run at a time:** a slider under the map shows a single leaf run, with min_cluster_size from
+  10 to 240: its recovered clusters, its misses, its groups and its unverified groups. These runs came
+  after the score, to explore, and are not part of it; the score stays the four runs the protocols fix.
+  Smaller sizes recover more clusters and find far more groups that no catalogue lists: in Carina,
+  143 of 202 recovered with 2,109 unverified groups at 10, against 13 of 202 with 15 at 240. Two charts
+  under **Where it works** follow both counts in both regions (also in `results/<region>_sweep.csv`).
 - **Level of detail:** the field is stored in random order and sent in nested levels of 65,536 stars,
   doubling each time, so every level is a uniform sample of the field. The page shows the first at
   once, adds the rest as they arrive (on a phone, up to 524,288 unless asked) and draws fewer while
@@ -197,7 +203,8 @@ card with its distance, recovery, purity and colour-magnitude diagram.
 
 `uv run scripts/export_viewer.py <region>` writes the page's data into `viewer/data/<region>/`
 (6.1 MB for Auriga, 26.1 MB for Carina, of which the proper motions, loaded only when time moves, are
-2.3 and 10.1 MB) from what the scoring produces, and
+2.3 and 10.1 MB) from what the scoring produces, and, if `scripts/sweep_region.py` has run, the
+slider's runs (4.9 and 6.7 MB more, each run fetched when the slider reaches it). Then
 `python3 -m http.server -d viewer` serves the page locally.
 
 ## Run
@@ -208,5 +215,6 @@ uv run pytest
 uv run scripts/pleiades.py              # downloads into data/ on first run (~15 min from VizieR)
 uv run scripts/fetch_region.py auriga   # stars and distances from GAVO, Hunt & Reffert members from VizieR
 uv run scripts/score_region.py auriga   # HDBSCAN runs, scores, figures (same for carina)
+uv run scripts/sweep_region.py auriga   # optional: leaf runs from 10 to 240 for the viewer's slider
 uv run scripts/export_viewer.py auriga  # the viewer's data
 ```

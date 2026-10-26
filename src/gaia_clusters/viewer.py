@@ -116,99 +116,135 @@ def rates(table: pd.DataFrame, column: str, order: list[str]) -> list[dict]:
             for b in order]
 
 
-def build(stars: pd.DataFrame, labels: pd.DataFrame, members: pd.DataFrame, table: pd.DataFrame,
-          named: dict[str, str], unverified_run: int, seed: int = 0) -> dict:
-    """Everything the viewer draws for one region, in parsecs.
+def view(stars: pd.DataFrame, labels: pd.DataFrame, members: pd.DataFrame, scored: pd.DataFrame,
+         run: int | None = None, unverified_run: int | None = None) -> dict:
+    """The clusters as one view of the region draws them. With `run` None, each scored cluster comes from
+    the run it is shown with (shown_run) and counts as recovered if any run recovers it: the score. With a
+    min_cluster_size, every cluster comes from that run alone. `labels` holds the runs, one column per
+    min_cluster_size; `scored` needs recovered_<k>, label_<k>, recovery_<k> and purity_<k> for each of them.
 
-    `stars` needs Source, GLON, GLAT, Gmag, BP-RP, r_med_geo (Bailer-Jones) and pm_l, pm_b (galactic_pm);
-    `labels` the leaf runs, one column per min_cluster_size, row for row with `stars`; `members` the Hunt &
-    Reffert members in the region; `table` score_region's table, indexed by name, with Hunt & Reffert's
-    tidal radius (rtpc), age (logAge16, logAge50, logAge84) and the cluster's proper motion as pm_l, pm_b.
-    A recovered cluster's group, from the run
-    it is shown with, is drawn at the cluster's catalogue distance: a member's own distance is uncertain
-    by far more than the cluster is big. Every other star is field, at its own distance.
-    """
+    A recovered cluster's group is drawn at the cluster's catalogue distance; its stars are `member_index`.
+    The groups no Hunt & Reffert cluster owns come from `unverified_run` (`run` if not given)."""
     sizes = [int(c) for c in labels.columns]
-    scored = table[table.recoverable]
+    pm = lambda idx: quantize_pm(stars.pm_l.to_numpy()[idx], stars.pm_b.to_numpy()[idx])
     by_name = members.groupby("Name").GaiaDR3.apply(np.asarray)
     clusters, groups, cmd = [], [], []
     for name, r in scored.iterrows():
-        k = shown_run(r, sizes)
+        k = shown_run(r, sizes) if run is None else run
+        recovered = bool(r.recovered if run is None else r[f"recovered_{k}"])
         group = np.flatnonzero(labels[str(k)].to_numpy() == r[f"label_{k}"]) if r[f"label_{k}"] >= 0 else np.array([], int)
         reference = np.flatnonzero(stars.Source.isin(by_name.get(name, [])).to_numpy())
         idx, cat = cmd_stars(group, reference)
         keep = np.isfinite(stars["BP-RP"].to_numpy()[idx])  # a star without BP − RP has no place in the diagram
         cmd.append((idx[keep], cat[keep]))
-        if r.recovered:
+        if recovered:
             groups.append(group)
-        clusters.append({
-            "name": name, "label": named.get(name, name.replace("_", " ")), "recovered": bool(r.recovered),
-            "reliable": bool(r.reliable), "dist": round(float(r.dist50)), "n": int(r.n), "run": k,
-            "size": len(group), "recovery": float(r[f"recovery_{k}"]), "purity": float(r[f"purity_{k}"]),
-            "runs": [s for s in sizes if r[f"recovered_{s}"]], "how": None if r.recovered else how_missed(r, sizes),
-            "radius": float(r.rtpc), "xyz": heliocentric(r.GLON, r.GLAT, r.dist50)[0], "pm": [float(r.pm_l), float(r.pm_b)],
-            "age": [round(float(r[f"logAge{q}"]), 2) for q in (16, 50, 84)]})
+        if run is not None:  # how_missed judges by any run's verdict; here only this run's counts
+            r = r.copy()
+            r["recovered"] = recovered
+        clusters.append({"recovered": recovered, "run": k, "size": len(group), "recovery": float(r[f"recovery_{k}"]),
+                         "purity": float(r[f"purity_{k}"]), "runs": [s for s in sizes if r[f"recovered_{s}"]],
+                         "how": None if recovered else how_missed(r, sizes if run is None else [k])})
 
     owner = owners(groups, len(stars))
     recovered = [i for i, c in enumerate(clusters) if c["recovered"]]
     drawn = np.flatnonzero(owner >= 0)
     drawn = drawn[np.argsort(owner[drawn], kind="stable")]
-    member_cluster = np.asarray(recovered)[owner[drawn]]
+    member_cluster = np.asarray(recovered, dtype=int)[owner[drawn]]
     member_xyz = heliocentric(stars.GLON.to_numpy()[drawn], stars.GLAT.to_numpy()[drawn],
                               scored.dist50.to_numpy()[member_cluster])
     for i, c in enumerate(clusters):
         hit = np.flatnonzero(member_cluster == i)
         c["members"] = [int(hit[0]), len(hit)] if len(hit) else None
-
-    field = np.flatnonzero((owner < 0) & np.isfinite(stars.r_med_geo.to_numpy()))
-    field = field[np.random.default_rng(seed).permutation(len(field))]
-    field_xyz = heliocentric(stars.GLON.to_numpy()[field], stars.GLAT.to_numpy()[field], stars.r_med_geo.to_numpy()[field])
-
-    lab = labels[str(unverified_run)].to_numpy()
-    free = unmatched(stars.Source, lab, members)
-    in_free = np.flatnonzero(np.isin(lab, free))
-    g = pd.DataFrame({"label": lab[in_free], "l": stars.GLON.to_numpy()[in_free], "b": stars.GLAT.to_numpy()[in_free],
-                      "d": stars.r_med_geo.to_numpy()[in_free], "pm_l": stars.pm_l.to_numpy()[in_free],
-                      "pm_b": stars.pm_b.to_numpy()[in_free]}).groupby("label")
-    med = g.median()
-    unverified_xyz = heliocentric(med.l, med.b, med.d)
-
     offset = np.cumsum([0] + [len(i) for i, _ in cmd])
     for c, o, (i, _) in zip(clusters, offset, cmd):
         c["cmd"] = [int(o), len(i)]
     cmd_idx = np.concatenate([i for i, _ in cmd])
-    every = np.vstack([field_xyz, member_xyz, np.array([c["xyz"] for c in clusters]).reshape(-1, 3), unverified_xyz])
+
+    lab = labels[str(unverified_run or run)].to_numpy()
+    in_free = np.flatnonzero(np.isin(lab, unmatched(stars.Source, lab, members)))
+    g = pd.DataFrame({"label": lab[in_free], "l": stars.GLON.to_numpy()[in_free], "b": stars.GLAT.to_numpy()[in_free],
+                      "d": stars.r_med_geo.to_numpy()[in_free], "pm_l": stars.pm_l.to_numpy()[in_free],
+                      "pm_b": stars.pm_b.to_numpy()[in_free]}).groupby("label")
+    med = g.median()
+    return {"clusters": clusters, "member_xyz": member_xyz, "member_cluster": member_cluster, "member_index": drawn,
+            "member_pm": pm(drawn), "cmd_index": cmd_idx, "cmd_bp_rp": stars["BP-RP"].to_numpy()[cmd_idx],
+            "cmd_g": stars.Gmag.to_numpy()[cmd_idx], "cmd_cat": np.concatenate([c for _, c in cmd]), "cmd_pm": pm(cmd_idx),
+            "unverified_xyz": heliocentric(med.l, med.b, med.d), "unverified_n": g.size().to_numpy(),
+            "unverified_pm": med[["pm_l", "pm_b"]].to_numpy(), "groups": int(lab.max() + 1) if run else None}
+
+
+def build(stars: pd.DataFrame, labels: pd.DataFrame, members: pd.DataFrame, table: pd.DataFrame,
+          named: dict[str, str], unverified_run: int, seed: int = 0) -> dict:
+    """Everything the viewer draws for one region, in parsecs: the score's view (view() with no run) and
+    what every view shares.
+
+    `stars` needs Source, GLON, GLAT, Gmag, BP-RP, r_med_geo (Bailer-Jones) and pm_l, pm_b (galactic_pm);
+    `labels` the leaf runs, one column per min_cluster_size, row for row with `stars`; `members` the Hunt &
+    Reffert members in the region; `table` score_region's table, indexed by name, with Hunt & Reffert's
+    tidal radius (rtpc), age (logAge16, logAge50, logAge84) and the cluster's proper motion as pm_l, pm_b.
+    The members of the score's view are left out of the field; every other star is field, at its own distance.
+    """
+    scored = table[table.recoverable]
+    built = view(stars, labels, members, scored, unverified_run=unverified_run)
+    for c, (name, r) in zip(built["clusters"], scored.iterrows()):
+        c |= {"name": name, "label": named.get(name, name.replace("_", " ")), "reliable": bool(r.reliable),
+              "dist": round(float(r.dist50)), "n": int(r.n), "radius": float(r.rtpc),
+              "xyz": heliocentric(r.GLON, r.GLAT, r.dist50)[0], "pm": [float(r.pm_l), float(r.pm_b)],
+              "age": [round(float(r[f"logAge{q}"]), 2) for q in (16, 50, 84)]}
+    clusters = built["clusters"]
+
+    in_group = np.zeros(len(stars), bool)
+    in_group[built["member_index"]] = True
+    field = np.flatnonzero(~in_group & np.isfinite(stars.r_med_geo.to_numpy()))
+    field = field[np.random.default_rng(seed).permutation(len(field))]
+    field_xyz = heliocentric(stars.GLON.to_numpy()[field], stars.GLAT.to_numpy()[field], stars.r_med_geo.to_numpy()[field])
+
+    every = np.vstack([field_xyz, built["member_xyz"], np.array([c["xyz"] for c in clusters]).reshape(-1, 3),
+                       built["unverified_xyz"]])
     pm = lambda idx: quantize_pm(stars.pm_l.to_numpy()[idx], stars.pm_b.to_numpy()[idx])
     rng, around = np.random.default_rng(seed), []
-    for c, (i, _) in zip(clusters, cmd):
+    for c in clusters:
+        own = built["cmd_index"][c["cmd"][0]:sum(c["cmd"])]
         around.append(near(stars.GLON.to_numpy(), stars.GLAT.to_numpy(), stars.r_med_geo.to_numpy(),
-                           (table.GLON[c["name"]], table.GLAT[c["name"]]), c["dist"], c["radius"], i, rng=rng))
+                           (table.GLON[c["name"]], table.GLAT[c["name"]]), c["dist"], c["radius"], own, rng=rng))
     start = np.cumsum([0] + [len(a) for a in around])
     for c, o, a in zip(clusters, start, around):
         c["near"] = [int(o), len(a)]
     far = max(np.nanmax(stars.r_med_geo), max(np.linalg.norm(c["xyz"]) for c in clusters))
     reference = drift_reference(stars.r_med_geo.to_numpy()[field], stars.pm_l.to_numpy()[field],
                                 stars.pm_b.to_numpy()[field], far)
-    return {"clusters": clusters, "field_xyz": field_xyz, "member_xyz": member_xyz, "member_cluster": member_cluster,
-            "field_pm": pm(field), "member_pm": pm(drawn), "unverified_pm": med[["pm_l", "pm_b"]].to_numpy(),
-            "cmd_pm": pm(cmd_idx), "near_pm": pm(np.concatenate(around).astype(int)),
-            "reference": reference,
-            "member_index": drawn,
-            "unverified_xyz": unverified_xyz, "unverified_n": g.size().to_numpy(),
-            "cmd_bp_rp": stars["BP-RP"].to_numpy()[cmd_idx], "cmd_g": stars.Gmag.to_numpy()[cmd_idx],
-            "cmd_cat": np.concatenate([c for _, c in cmd]), "lo": np.floor(every.min(axis=0)) - 1,
-            "hi": np.ceil(every.max(axis=0)) + 1, "stars": len(stars),
-            "reach": float(np.nanpercentile(stars.r_med_geo, 99))}
+    return built | {"field_xyz": field_xyz, "field_pm": pm(field), "near_pm": pm(np.concatenate(around).astype(int)),
+                    "reference": reference, "lo": np.floor(every.min(axis=0)) - 1, "hi": np.ceil(every.max(axis=0)) + 1,
+                    "stars": len(stars), "reach": float(np.nanpercentile(stars.r_med_geo, 99))}
 
 
-def write(out: Path, built: dict, summary: dict) -> dict:
-    """The files one region's page loads: meta.json, the field in nested levels (field-<k>.bin), the
-    members (members.bin) and the colour-magnitude points (cmd.bin). Little-endian, as browsers read.
-    Proper motions go in files of their own (field-<k>-pm.bin, members-pm.bin): the page loads them only
-    to move the stars in time.
+def write_view(out: Path, v: dict, prefix: str = "") -> dict:
+    """One view's files (view()): its members (members.bin), its colour-magnitude points (cmd.bin) and their
+    proper motions, named after `prefix`. Returns how meta.json points at them, and its unverified groups."""
+    name = lambda f: f"{prefix}{f}"
+    (out / name("members.bin")).write_bytes(v["member_xyz"].astype("<f4").tobytes() + v["member_cluster"].astype("<u2").tobytes())
+    (out / name("members-pm.bin")).write_bytes(v["member_pm"].astype("<i2").tobytes())
+    (out / name("cmd-pm.bin")).write_bytes(v["cmd_pm"].astype("<i2").tobytes())  # row for row with cmd.bin
+    (out / name("cmd.bin")).write_bytes(np.round(v["cmd_bp_rp"] * 1000).astype("<i2").tobytes()
+                                        + np.round(v["cmd_g"] * 1000).astype("<u2").tobytes()
+                                        + v["cmd_cat"].astype("u1").tobytes())
+    return {"members": {"file": name("members.bin"), "pm": name("members-pm.bin"), "count": len(v["member_xyz"])},
+            "cmd": {"file": name("cmd.bin"), "pm": name("cmd-pm.bin"), "count": len(v["cmd_cat"])},
+            "unverified": {"count": len(v["unverified_n"]), "n": v["unverified_n"].tolist(),
+                           "xyz": np.round(v["unverified_xyz"], 1).ravel().tolist(),
+                           "pm": np.round(v["unverified_pm"], 3).ravel().tolist()}}
+
+
+def write(out: Path, built: dict, summary: dict, runs: dict[int, dict] | None = None, protocol=()) -> dict:
+    """The files one region's page loads: meta.json, the field in nested levels (field-<k>.bin), and the
+    score's view (write_view). Little-endian, as browsers read. Proper motions go in files of their own
+    (field-<k>-pm.bin, members-pm.bin): the page loads them only to move the stars in time.
+    `runs` are the single-run views (view() with a run) by min_cluster_size, for the slider: each in
+    run-<k>.json and run-<k>-*.bin; `protocol` the sizes the score uses.
     The field is quantized; members are not, since the page comes close enough to see the steps."""
     out.mkdir(parents=True, exist_ok=True)
-    for old in out.glob("field-*.bin"):  # also the -pm files
+    for old in [*out.glob("field-*.bin"), *out.glob("run-*")]:  # also the -pm files
         old.unlink()
     lo, hi = built["lo"], built["hi"]
     field = quantize(built["field_xyz"], lo, hi)
@@ -218,29 +254,27 @@ def write(out: Path, built: dict, summary: dict) -> dict:
         (out / f"field-{k}-pm.bin").write_bytes(built["field_pm"][start:end].astype("<i2").tobytes())
         levels.append({"file": f"field-{k}.bin", "pm": f"field-{k}-pm.bin", "count": end - start})
         start = end
-    (out / "members.bin").write_bytes(built["member_xyz"].astype("<f4").tobytes()
-                                      + built["member_cluster"].astype("<u2").tobytes())
-    (out / "members-pm.bin").write_bytes(built["member_pm"].astype("<i2").tobytes())
-    (out / "cmd-pm.bin").write_bytes(built["cmd_pm"].astype("<i2").tobytes())  # row for row with cmd.bin
     (out / "near-pm.bin").write_bytes(built["near_pm"].astype("<i2").tobytes())
-    (out / "cmd.bin").write_bytes(np.round(built["cmd_bp_rp"] * 1000).astype("<i2").tobytes()
-                                  + np.round(built["cmd_g"] * 1000).astype("<u2").tobytes()
-                                  + built["cmd_cat"].astype("u1").tobytes())
-    clusters = [c | {"xyz": [round(float(v), 1) for v in c["xyz"]], "recovery": round(c["recovery"], 3),
-                     "purity": round(c["purity"], 3), "radius": round(c["radius"], 1),
-                     "pm": [round(v, 3) for v in c["pm"]]} for c in built["clusters"]]
+    rounded = lambda c: c | {"recovery": round(c["recovery"], 3), "purity": round(c["purity"], 3)}
+    clusters = [rounded(c) | {"xyz": [round(float(v), 1) for v in c["xyz"]], "radius": round(c["radius"], 1),
+                              "pm": [round(v, 3) for v in c["pm"]]} for c in built["clusters"]]
+    sweep = []
+    for k, v in (runs or {}).items():
+        files = write_view(out, v, f"run-{k}-")
+        recovered = sum(c["recovered"] for c in v["clusters"])
+        per = [{key: c[key] for key in ("recovered", "size", "recovery", "purity", "how", "members", "cmd")}
+               for c in map(rounded, v["clusters"])]
+        (out / f"run-{k}.json").write_text(json.dumps(files | {"run": k, "clusters": per}, ensure_ascii=False,
+                                                      separators=(",", ":")))
+        sweep.append({"run": k, "file": f"run-{k}.json", "recovered": recovered, "groups": v["groups"],
+                      "unverified": files["unverified"]["count"]})
     meta = summary | {
         "stars": built["stars"], "reach": round(built["reach"]),
         "quant": {"lo": lo.tolist(), "hi": hi.tolist()},
         "field": {"count": len(field), "levels": levels},
-        "members": {"file": "members.bin", "pm": "members-pm.bin", "count": len(built["member_xyz"])},
         "pm_step": PM_STEP,
         "reference": {"step": REFERENCE_STEP, "pm": np.round(built["reference"], 3).tolist()},
-        "cmd": {"file": "cmd.bin", "pm": "cmd-pm.bin", "count": len(built["cmd_cat"])},
         "near": {"file": "near-pm.bin", "count": len(built["near_pm"])},
-        "clusters": clusters,
-        "unverified": {"count": len(built["unverified_n"]), "n": built["unverified_n"].tolist(),
-                       "xyz": np.round(built["unverified_xyz"], 1).ravel().tolist(),
-                       "pm": np.round(built["unverified_pm"], 3).ravel().tolist()}}
+        "clusters": clusters} | write_view(out, built) | {"runs": {"protocol": list(protocol), "sweep": sweep}}
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, separators=(",", ":")))
     return meta

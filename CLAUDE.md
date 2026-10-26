@@ -34,6 +34,10 @@ Issues: abp002/gaia-clusters
   which the page takes off by default. `drift()` in the shaders and `drifted()` in JS must stay twins.
   Each card's proper-motion diagram reads `cmd-pm.bin` (row for row with `cmd.bin`) and `near-pm.bin`
   (field stars around each cluster, `near()` in viewer.py; offset and count in `clusters[].near`).
+- `scripts/sweep_region.py`: leaf runs from min_cluster_size 10 to 240 (`data/<region>_labels_sweep.parquet`,
+  summary in `results/<region>_sweep.csv`), exploration outside the score. The export turns each into a
+  single-run view (`view(run=k)` in viewer.py: `run-<k>.json` and `run-<k>-*.bin`); the page's slider swaps
+  views (`makeView`/`setView` in main.js). `meta.json` stays the score's view: each cluster from its best run.
 - `viewer/`: static page, three.js 0.170 from jsdelivr, no build step. Clusters are spheres (instanced,
   tidal radius `rtpc`, at least 4 CSS px, resized every frame in `drawSpheres`). The field is rendered as a
   density (stars per pixel counted in a half-float buffer, shown in grey on a log scale). `viewer/data/`
@@ -50,6 +54,7 @@ Issues: abp002/gaia-clusters
 ## Commands
 - `uv run pytest` — projection and scoring tests.
 - `uv run scripts/pleiades.py [min_cluster_size] [min_samples]` — Pleiades check, writes `figures/pleiades.png`.
+- `uv run scripts/sweep_region.py <region>` — the slider's runs (under a minute; reuses the cached tree), before the export.
 - `uv run scripts/export_viewer.py <region>` — the viewer's data into `viewer/data/<region>/`;
   `python3 -m http.server -d viewer` to look at it (any free port: another session may hold 8000).
 - `uv run scripts/fetch_region.py <region>` then `uv run scripts/score_region.py <region>` — one region

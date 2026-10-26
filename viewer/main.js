@@ -164,10 +164,11 @@ async function show(name) {
     .map(async (f) => (await get(f)).arrayBuffer()));
   if (token !== loading) return;
   clear();
-  R = build(name, meta, members, cmd, get);
-  R.cmd.pm = new Int16Array(cmdPm);
+  R = build(name, meta, get);
   R.near = new Int16Array(nearPm);
-  showCard(null);
+  R.score = makeView(R, null, meta, members, cmd, cmdPm);
+  setView(R, R.score);
+  runStrip(R);
   for (let k = 0; k < meta.field.levels.length && token === loading; k++) {
     if (k > 0 && R.loaded + meta.field.levels[k].count > R.budget) break;
     await addLevel(R, k);
@@ -195,29 +196,23 @@ async function addMotion(region, k) {
   needs = true;
 }
 // The members' and the field's proper motions, the first time the clock leaves now. Levels that arrive later
-// bring their own (addLevel)
+// bring their own (addLevel), and so does a view shown later (setView)
 function loadMotions(region) {
-  region.motions ??= Promise.all([
-    pmAttribute(region, region.meta.members.pm).then((a) => region.members.geometry.setAttribute('pm', a)),
-    ...region.levels.map((_, k) => addMotion(region, k))]);
+  region.motions ??= Promise.all([viewMotion(region, region.view), ...region.levels.map((_, k) => addMotion(region, k))]);
   return region.motions;
 }
+function viewMotion(region, v) {
+  v.motion ??= pmAttribute(region, v.data.members.pm).then((a) => { v.members.geometry.setAttribute('pm', a); needs = true; });
+  return v.motion;
+}
 
-function build(name, meta, membersBuf, cmdBuf, get) {
+function build(name, meta, get) {
   const group = new THREE.Group(), field = new THREE.Group();
-  const region = { name, meta, get, group, field, levels: [], loaded: 0, budget: BUDGET, labels: [] };
+  const region = { name, meta, get, group, field, levels: [], loaded: 0, budget: BUDGET, labels: [], views: new Map() };
   const lo = meta.quant.lo, step = meta.quant.hi.map((h, i) => (h - lo[i]) / 65535);
   quant.lo.value.fromArray(lo);
   quant.step.value.fromArray(step);
 
-  // Members, in parsecs: for drawing, picking and flying to a cluster
-  const M = meta.members.count;
-  const pos = new Float32Array(membersBuf, 0, 3 * M), cluster = new Uint16Array(membersBuf, 12 * M, M);
-  const mg = new THREE.BufferGeometry();
-  mg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  mg.setAttribute('cluster', new THREE.BufferAttribute(cluster, 1));
-  group.add(points(mg, memberMaterial, 6));
-  region.members = { pos, cluster, geometry: mg };
   motion.pmStep.value = meta.pm_step;
   const ref = meta.reference.pm.slice(0, REF_BINS);
   ref.forEach(([l, b], k) => motion.ref.value[k].set(l, b));
@@ -229,58 +224,120 @@ function build(name, meta, membersBuf, cmdBuf, get) {
   };
 
   // Recovered clusters: spheres as wide as the cluster in Hunt & Reffert (its tidal radius), but never
-  // smaller than a few pixels. drawSpheres() sizes them every frame
-  region.found = meta.clusters.flatMap((c, i) => c.members ? [i] : []);
-  region.spheres = new THREE.InstancedMesh(sphereGeometry, sphereMaterial, region.found.length);
+  // smaller than a few pixels. drawSpheres() sizes them every frame; a view uses the first view.found.length
+  region.spheres = new THREE.InstancedMesh(sphereGeometry, sphereMaterial, meta.clusters.length);
   region.spheres.frustumCulled = false;
   group.add(region.spheres);
-
-  // Missed clusters: rings at the catalogue position, sized the same way
-  const missed = meta.clusters.map((c, i) => [c, i]).filter(([c]) => !c.recovered);
-  const rg = new THREE.BufferGeometry();
-  rg.setAttribute('position', new THREE.Float32BufferAttribute(missed.flatMap(([c]) => c.xyz), 3));
-  rg.setAttribute('radius', new THREE.Float32BufferAttribute(missed.map(([c]) => c.radius), 1));
-  rg.setAttribute('idx', new THREE.Float32BufferAttribute(missed.map(([, i]) => i), 1));
-  rg.setAttribute('pm', new THREE.Float32BufferAttribute(missed.flatMap(([c]) => c.pm.map((v) => v / meta.pm_step)), 2));
-  rg.setAttribute('tint', new THREE.Float32BufferAttribute(new Float32Array(3 * missed.length), 3));
-  region.rings = points(rg, ringMaterial, 4);
-  group.add(region.rings);
-  region.missed = missed.map(([, i]) => i);
-
-  const ug = new THREE.BufferGeometry();
-  ug.setAttribute('position', new THREE.Float32BufferAttribute(meta.unverified.xyz, 3));
-  ug.setAttribute('idx', new THREE.Float32BufferAttribute(meta.unverified.n.map((_, i) => i), 1));
-  ug.setAttribute('pm', new THREE.Float32BufferAttribute(meta.unverified.pm.map((v) => v / meta.pm_step), 2));
-  region.unverified = points(ug, squareMaterial, 2);
-  region.unverified.visible = $('#unverified').checked;
-  group.add(region.unverified);
-
-  region.cmd = { bp: new Int16Array(cmdBuf, 0, meta.cmd.count), g: new Uint16Array(cmdBuf, 2 * meta.cmd.count, meta.cmd.count),
-                 cat: new Uint8Array(cmdBuf, 4 * meta.cmd.count, meta.cmd.count) };
   group.add(guides(region));
-  for (const name of meta.named) {
-    const i = meta.clusters.findIndex((c) => c.name === name);
-    if (i >= 0) label(region, meta.clusters[i].label, centre(region, i), 'named').pm = meta.clusters[i].pm;
+  for (const name of meta.named) {  // at the catalogue position: the label must not jump between views
+    const c = meta.clusters.find((c) => c.name === name);
+    if (c) label(region, c.label, new THREE.Vector3().fromArray(c.xyz), 'named').pm = c.pm;
   }
   scene.add(group);
   fieldScene.add(field);
   intro(meta);
-  fillFind(meta);
-  $('#unverified-label').textContent = `Show the ${num(meta.unverified.count)} unverified groups`;
-  paint(region);
   galaxy(name);
   frame(region);
   return region;
 }
 
+// A view of the region: the score's (run null: each cluster from the run that recovers it best, as in meta.json)
+// or one run's (run-<k>.json). It brings the recovered clusters' members, in parsecs, the missed clusters' rings,
+// the unverified groups and the diagrams' stars; the clusters' fixed facts (place, motion, age) stay meta's
+function makeView(region, run, data, membersBuf, cmdBuf, cmdPmBuf) {
+  const { meta } = region;
+  const clusters = run === null ? meta.clusters : meta.clusters.map((c, i) => ({ ...c, ...data.clusters[i], run, runs: [] }));
+  const M = data.members.count, C = data.cmd.count;
+  const pos = new Float32Array(membersBuf, 0, 3 * M), cluster = new Uint16Array(membersBuf, 12 * M, M);
+  const mg = new THREE.BufferGeometry();
+  mg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  mg.setAttribute('cluster', new THREE.BufferAttribute(cluster, 1));
+
+  // Missed clusters: rings at the catalogue position, sized as the spheres
+  const missed = clusters.flatMap((c, i) => c.recovered ? [] : [i]);
+  const rg = new THREE.BufferGeometry();
+  rg.setAttribute('position', new THREE.Float32BufferAttribute(missed.flatMap((i) => clusters[i].xyz), 3));
+  rg.setAttribute('radius', new THREE.Float32BufferAttribute(missed.map((i) => clusters[i].radius), 1));
+  rg.setAttribute('idx', new THREE.Float32BufferAttribute(missed, 1));
+  rg.setAttribute('pm', new THREE.Float32BufferAttribute(missed.flatMap((i) => clusters[i].pm.map((v) => v / meta.pm_step)), 2));
+  rg.setAttribute('tint', new THREE.Float32BufferAttribute(new Float32Array(3 * missed.length), 3));
+
+  const u = data.unverified, ug = new THREE.BufferGeometry();
+  ug.setAttribute('position', new THREE.Float32BufferAttribute(u.xyz, 3));
+  ug.setAttribute('idx', new THREE.Float32BufferAttribute(u.n.map((_, i) => i), 1));
+  ug.setAttribute('pm', new THREE.Float32BufferAttribute(u.pm.map((v) => v / meta.pm_step), 2));
+
+  return { run, data, clusters, missed, found: clusters.flatMap((c, i) => c.members ? [i] : []),
+           unverifiedRun: run ?? meta.unverified_run,
+           members: { pos, cluster, geometry: mg, points: points(mg, memberMaterial, 6) },
+           rings: points(rg, ringMaterial, 4), unverified: points(ug, squareMaterial, 2),
+           cmd: { bp: new Int16Array(cmdBuf, 0, C), g: new Uint16Array(cmdBuf, 2 * C, C), cat: new Uint8Array(cmdBuf, 4 * C, C),
+                  pm: new Int16Array(cmdPmBuf) } };
+}
+
+function setView(region, v) {
+  const old = region.view;
+  if (old) region.group.remove(old.members.points, old.rings, old.unverified);
+  region.view = v;
+  region.group.add(v.members.points, v.rings, v.unverified);
+  v.unverified.visible = $('#unverified').checked;
+  region.spheres.count = v.found.length;
+  if (region.motions) viewMotion(region, v);
+  $('#unverified-label').textContent = `Show the ${num(v.data.unverified.count)} unverified groups`;
+  if (old && old !== v) {  // each run has its own unverified groups
+    if (pinned?.kind === 'group') pinned = null;
+    if (hovered?.kind === 'group') hovered = null;
+  }
+  fillFind(v);
+  paint(region);
+  highlight();
+  showCard(hovered ?? pinned);
+}
+
+// A single run's view, fetched the first time it is asked for
+function loadView(region, run) {
+  if (!region.views.has(run)) {
+    region.views.set(run, (async () => {
+      const data = await (await region.get(`run-${run}.json`)).json();
+      const [m, c, cp] = await Promise.all([data.members.file, data.cmd.file, data.cmd.pm]
+        .map(async (f) => (await region.get(f)).arrayBuffer()));
+      return makeView(region, run, data, m, c, cp);
+    })());
+  }
+  return region.views.get(run);
+}
+
+// The run slider: the score's view, or one run at a time from the sweep (scripts/sweep_region.py)
+function runStrip(region) {
+  const sweep = region.meta.runs?.sweep ?? [];
+  $('#runs').hidden = !sweep.length;
+  if (!sweep.length) return;
+  $('#run').max = sweep.length - 1;
+  chooseRun().catch(failed);
+}
+async function chooseRun() {
+  const region = R;
+  if (!region?.meta.runs?.sweep.length) return;
+  const { sweep, protocol } = region.meta.runs, on = $('#one-run').checked, s = sweep[+$('#run').value];
+  $('#run').disabled = !on;
+  const n = region.meta.clusters.length;
+  $('#run-out').innerHTML = on
+    ? `min_cluster_size <b>${s.run}</b> · ${s.recovered} of ${n} recovered · ${num(s.groups)} groups, ${num(s.unverified)} unverified`
+    : `the score: any of runs ${list(protocol)} · ${region.meta.recovered} of ${n} recovered`;
+  region.want = on ? s.run : null;
+  if (!on) return region.view === region.score || setView(region, region.score);
+  const v = await loadView(region, s.run);
+  if (region === R && region.want === s.run && region.view !== v) setView(region, v);
+}
+
 // Spheres blue and rings red, or both by age
 const tint = new THREE.Color();
 function paint(region) {
-  const byAge = $('#by-age').checked, colour = (c, plain) => tint.set(byAge ? ageBand(c).hex : plain);
-  region.found.forEach((i, k) => region.spheres.setColorAt(k, colour(region.meta.clusters[i], HEX.recovered)));
-  region.spheres.instanceColor.needsUpdate = true;
-  const t = region.rings.geometry.attributes.tint;
-  region.missed.forEach((i, k) => colour(region.meta.clusters[i], HEX.missed).toArray(t.array, 3 * k));
+  const byAge = $('#by-age').checked, colour = (c, plain) => tint.set(byAge ? ageBand(c).hex : plain), v = region.view;
+  v.found.forEach((i, k) => region.spheres.setColorAt(k, colour(v.clusters[i], HEX.recovered)));
+  if (region.spheres.instanceColor) region.spheres.instanceColor.needsUpdate = true;
+  const t = v.rings.geometry.attributes.tint;
+  v.missed.forEach((i, k) => colour(v.clusters[i], HEX.missed).toArray(t.array, 3 * k));
   t.needsUpdate = true;
   $('#age-key').hidden = !byAge;
   needs = true;
@@ -314,7 +371,7 @@ const screenRadius = (c) => Math.max(MIN_RADIUS, c.radius * proj.value / dpr / M
 const scaled = new THREE.Matrix4();
 function drawSpheres() {
   const on = hovered ?? pinned;
-  R.found.forEach((i, k) => {
+  R.view.found.forEach((i, k) => {
     const c = R.meta.clusters[i], p = clusterAt(c, at), d = depth(p);  // behind the camera (d < 0), at its own size
     const r = on?.kind === 'cluster' && on.i === i ? 0 : Math.max(c.radius, MIN_RADIUS * dpr * d / proj.value);
     R.spheres.setMatrixAt(k, scaled.makeScale(r, r, r).setPosition(p));
@@ -345,6 +402,34 @@ function rateChart(ms, by, title, W) {
     aria-label="${title}: ${bins.map((b, i) => `${b}, ${ms.map(({ meta }) => `${meta.title} ${meta.rates[by][i].recovered} of ${meta.rates[by][i].total}`).join(', ')}`).join('; ')}">${grid}${rows}</svg></figure>`;
 }
 
+// One line per region over the sweep's runs, min_cluster_size on a log axis: `value` of each run, on a 0–100 %
+// axis or, with `log`, a log one. Drawn W units wide for a figure W pixels wide, as rateChart
+function sweepChart(ms, title, W, { value, text, log }) {
+  const runs = ms[0].meta.runs.sweep.map((s) => s.run), L = 46, Rm = 64, T = 10, B = 34, H = 230;
+  const lk = (k) => Math.log(k), sx = (k) => L + (lk(k) - lk(runs[0])) / (lk(runs.at(-1)) - lk(runs[0])) * (W - L - Rm);
+  const all = ms.flatMap(({ meta }) => meta.runs.sweep.map((s) => value(s, meta)));
+  const [y0, y1] = log ? [10 ** Math.floor(Math.log10(Math.min(...all))), 10 ** Math.ceil(Math.log10(Math.max(...all)))] : [0, 1];
+  const f = log ? Math.log10 : (v) => v, sy = (v) => H - B - (f(v) - f(y0)) / (f(y1) - f(y0)) * (H - T - B);
+  const yt = log ? Array.from({ length: Math.log10(y1 / y0) + 1 }, (_, i) => y0 * 10 ** i) : [0, 0.5, 1];
+  const grid = yt.map((v) => `<line class="grid" x1="${L}" x2="${W - Rm}" y1="${sy(v)}" y2="${sy(v)}"/>
+    <text x="${L - 8}" y="${sy(v) + 4}" text-anchor="end">${log ? num(v) : `${v * 100} %`}</text>`).join('');
+  const xt = runs.filter((k) => [10, 20, 40, 80, 160, 240].includes(k)).map((k) =>
+    `<text x="${sx(k)}" y="${H - B + 16}" text-anchor="middle">${k}</text>`).join('');
+  const ends = ms.map(({ meta }) => sy(value(meta.runs.sweep.at(-1), meta))), order = ends.map((_, j) => j).sort((a, b) => ends[a] - ends[b]);
+  order.forEach((j, n) => { if (n) ends[j] = Math.max(ends[j], ends[order[n - 1]] + 13); });  // end labels 13 units apart at least
+  const lines = ms.map(({ meta }, j) => {
+    const pts = meta.runs.sweep.map((s) => [sx(s.run), sy(value(s, meta)), s]);
+    const [ex] = pts.at(-1), ey = ends[j];
+    return `<path d="M${pts.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L')}" fill="none" stroke="${REGION_HEX[j]}" stroke-width="2"/>
+      ${pts.map(([x, y, s]) => `<g><title>${esc(meta.title)}, min_cluster_size ${s.run}: ${text(s, meta)}</title>
+        <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2" fill="${REGION_HEX[j]}"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="9" fill="transparent"/></g>`).join('')}
+      <text class="value" x="${ex + 8}" y="${ey + 4}">${esc(meta.title)}</text>`;
+  }).join('');
+  return `<figure><figcaption>${title}</figcaption><svg class="rates-chart" viewBox="0 0 ${W} ${H}" role="img"
+    aria-label="${title}: ${ms.map(({ meta }) => `${meta.title}, ${meta.runs.sweep.map((s) => `${s.run}: ${text(s, meta)}`).join(', ')}`).join('; ')}">
+    ${grid}${xt}<text x="${(L + W - Rm) / 2}" y="${H - 3}" text-anchor="middle">min_cluster_size</text>${lines}</svg></figure>`;
+}
+
 // The kiloparsec past the field's 99th percentile and the farthest cluster: some clusters lie beyond the field
 const farEdge = (meta) => Math.ceil(Math.max(meta.reach, ...meta.clusters.map((c) => Math.hypot(...c.xyz))) / 1000) * 1000;
 
@@ -364,6 +449,13 @@ metas.then((ms) => {
     if (W === drawn) return;
     drawn = W;
     charts.innerHTML = rateChart(ms, 'distance', 'By the cluster\'s distance', W) + rateChart(ms, 'members', 'By its members in our sample', W);
+    if (ms.every(({ meta }) => meta.runs?.sweep.length)) {
+      $('#sweep').hidden = false;
+      $('#sweep-charts').innerHTML = sweepChart(ms, 'Recovered', W, { value: (s, m) => s.recovered / m.recoverable,
+          text: (s, m) => `${s.recovered} of ${m.recoverable} recovered` })
+        + sweepChart(ms, 'Groups no Hunt &amp; Reffert cluster owns', W, { log: true, value: (s) => s.unverified,
+          text: (s) => `${num(s.unverified)} of ${num(s.groups)} groups` });
+    }
   }).observe(charts);
 }).catch(() => { $('#rates').hidden = true; });
 async function galaxy(name) {
@@ -439,7 +531,7 @@ let playing = null;  // the time and clock time the play started from
 function followed() {
   if (!R || !pinned || flight || camera.position.distanceTo(controls.target) > 300) return null;
   if (pinned.kind === 'cluster') return clusterAt(R.meta.clusters[pinned.i]);
-  const { xyz, pm } = R.meta.unverified;
+  const { xyz, pm } = R.view.data.unverified;
   return drifted(new THREE.Vector3().fromArray(xyz, 3 * pinned.i), [pm[2 * pinned.i], pm[2 * pinned.i + 1]]);
 }
 // Change where things are drawn, with the view travelling along with the pinned cluster, so it stays in sight
@@ -490,6 +582,7 @@ function tour(k) {
   const stops = TOURS[R?.name] ?? [];
   if (k < 0 || k >= stops.length) return endTour();
   stop_ = k;
+  if (R.view !== R.score) { $('#one-run').checked = false; chooseRun(); }  // the stops' numbers are the score's
   const s = stops[k], i = s.cluster ? R.meta.clusters.findIndex((c) => c.name === s.cluster) : -1;
   if (i >= 0) {  // from a few hundred parsecs, so its neighbours show too
     pin({ kind: 'cluster', i });
@@ -523,6 +616,9 @@ function clear() {
   scene.remove(R.group);
   fieldScene.remove(R.field);
   for (const g of [R.group, R.field]) g.traverse((o) => o.geometry?.dispose());
+  for (const v of [R.score, ...R.views.values()]) {
+    Promise.resolve(v).then((v) => [v.members.points, v.rings, v.unverified].forEach((o) => o.geometry.dispose())).catch(() => {});
+  }
   labelsEl.replaceChildren();
   pinned = hovered = null;
   flight = null;
@@ -592,17 +688,17 @@ function frame(region, height) {
 
 // Where a cluster is drawn, and how close to come to see it whole
 function centre(region, i) {
-  const m = region.meta.clusters[i].members;
+  const m = region.view.clusters[i].members;
   if (!m) return new THREE.Vector3().fromArray(region.meta.clusters[i].xyz);
-  const c = new THREE.Vector3(), p = region.members.pos;
+  const c = new THREE.Vector3(), p = region.view.members.pos;
   for (let j = m[0]; j < m[0] + m[1]; j++) c.x += p[3 * j], c.y += p[3 * j + 1], c.z += p[3 * j + 2];
   return c.divideScalar(m[1]);
 }
 
 function viewDistance(region, i, at) {
-  const m = region.meta.clusters[i].members;
+  const m = region.view.clusters[i].members;
   if (!m) return 40;
-  const p = region.members.pos, d = [];
+  const p = region.view.members.pos, d = [];
   for (let j = m[0]; j < m[0] + m[1]; j++) d.push(Math.hypot(p[3 * j] - at.x, p[3 * j + 1] - at.y, p[3 * j + 2] - at.z));
   d.sort((a, b) => a - b);
   return Math.max(12, 5.5 * d[Math.floor(0.9 * (d.length - 1))]);
@@ -641,13 +737,13 @@ function pick(px, py) {
   };
   let best = null, bestD = Infinity;
   const consider = (d, reach, hit) => { if (d < reach * reach && d < bestD) { bestD = d; best = hit; } };
-  for (const i of [...R.found, ...R.missed]) {
+  for (const i of [...R.view.found, ...R.view.missed]) {
     const c = R.meta.clusters[i];
     const p = clusterAt(c);
     consider(dist2(p.x, p.y, p.z), screenRadius(c) + 4, { kind: 'cluster', i });
   }
-  if (R.unverified.visible) {
-    const { xyz, pm } = R.meta.unverified, p = new THREE.Vector3();
+  if (R.view.unverified.visible) {
+    const { xyz, pm } = R.view.data.unverified, p = new THREE.Vector3();
     for (let i = 0; i < xyz.length / 3; i++) {
       drifted(p.fromArray(xyz, 3 * i), [pm[2 * i], pm[2 * i + 1]], p);
       consider(dist2(p.x, p.y, p.z), 8, { kind: 'group', i });
@@ -696,7 +792,7 @@ function goTo(hit) {
     const at = centre(R, hit.i);
     flyTo(drifted(at, R.meta.clusters[hit.i].pm), viewDistance(R, hit.i, at));
   } else {
-    const { xyz, pm } = R.meta.unverified;
+    const { xyz, pm } = R.view.data.unverified;
     flyTo(drifted(new THREE.Vector3().fromArray(xyz, 3 * hit.i), [pm[2 * hit.i], pm[2 * hit.i + 1]]), 40);
   }
 }
@@ -707,19 +803,20 @@ function showCard(hit) {
 }
 
 function emptyCard() {
-  const m = R.meta;
-  return `<div class="info"><p class="kicker">${esc(m.title)}</p>
+  const m = R.meta, cs = R.view.clusters, rec = cs.filter((c) => c.recovered).length;
+  const rel = cs.filter((c) => c.reliable), relRec = rel.filter((c) => c.recovered).length;
+  return `<div class="info"><p class="kicker">${esc(m.title)}${R.view.run === null ? '' : ` · min_cluster_size ${R.view.run} alone`}</p>
     <p>Point at a blue sphere or a red ring, or tap it, for its card. Every cluster is also in the list under the map.</p>
-    <dl class="facts"><dt>Recovered</dt><dd>${m.recovered} of ${m.recoverable} (${pct(m.recovered / m.recoverable)})</dd>
-    <dt>Highly reliable</dt><dd>${m.reliable_recovered} of ${m.reliable} (${pct(m.reliable_recovered / m.reliable)})</dd>
-    <dt>Missed</dt><dd>${m.recoverable - m.recovered}</dd><dt>Field stars</dt><dd>${num(m.field.count)}</dd></dl></div>`;
+    <dl class="facts"><dt>Recovered</dt><dd>${rec} of ${cs.length} (${pct(rec / cs.length)})</dd>
+    <dt>Highly reliable</dt><dd>${relRec} of ${rel.length} (${pct(relRec / rel.length)})</dd>
+    <dt>Missed</dt><dd>${cs.length - rec}</dd><dt>Field stars</dt><dd>${num(m.field.count)}</dd></dl></div>`;
 }
 
 function clusterCard(i) {
-  const c = R.meta.clusters[i], plain = c.name.replaceAll('_', ' ');
+  const c = R.view.clusters[i], plain = c.name.replaceAll('_', ' ');
   const status = c.recovered ? '<p class="kicker rec">Recovered</p>' : `<p class="kicker miss">Missed · ${esc(c.how.replace(/ \(.*\)$/, ''))}</p>`;
   const others = c.runs.filter((k) => k !== c.run);
-  const group = !c.size ? `No group of the leaf runs holds any of its members.`
+  const group = !c.size ? `No group of ${R.view.run === null ? 'the leaf runs' : 'this run'} holds any of its members.`
     : `${c.recovered ? 'Shown' : 'Closest'}: a group of ${num(c.size)} stars in the run with min_cluster_size ${c.run}.`
       + (others.length ? ` Also recovered at ${list(others)}.` : '');
   const figure = c.cmd[1] ? `<div class="plots"><figure>${cmdFigure(c)}<figcaption>Colour and brightness</figcaption></figure>
@@ -743,9 +840,9 @@ const age = (c) => {
 const list = (xs) => xs.length < 2 ? `${xs[0]}` : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`;
 
 function groupCard(i) {
-  const u = R.meta.unverified, at = new THREE.Vector3().fromArray(u.xyz, 3 * i);
+  const u = R.view.data.unverified, at = new THREE.Vector3().fromArray(u.xyz, 3 * i);
   return `<div class="info"><div class="head"><div><p class="kicker">Unverified group</p><h3>${num(u.n[i])} stars</h3></div></div>
-    <p class="meta">${kpc(at.length())}, the median of its stars · min_cluster_size ${R.meta.unverified_run}</p>
+    <p class="meta">${kpc(at.length())}, the median of its stars · min_cluster_size ${R.view.unverifiedRun}</p>
     <p>No Hunt &amp; Reffert cluster holds most of its stars. Hunt &amp; Reffert discard groups like this with a significance
     test and a colour-magnitude classifier, which this project does not have, so it is not counted as a cluster.</p></div>`;
 }
@@ -779,13 +876,13 @@ function scatter({ x0, x1, y0, y1, up, layers, xlabel, ylabel, label, W = 300, H
 // The stars of a cluster's diagrams by category, 0 in both, 1 ours only, 2 theirs only (drawn 2, 0, 1)
 function byCategory(c, x, y) {
   const [start, count] = c.cmd, out = [[[], []], [[], []], [[], []]];
-  for (let j = start; j < start + count; j++) out[R.cmd.cat[j]][0].push(x(j)), out[R.cmd.cat[j]][1].push(y(j));
+  for (let j = start; j < start + count; j++) out[R.view.cmd.cat[j]][0].push(x(j)), out[R.view.cmd.cat[j]][1].push(y(j));
   return [['theirs', ...out[2]], ['both', ...out[0]], ['ours', ...out[1]]];
 }
 
 // Colour-magnitude diagram: G against BP − RP, blue in both, red ours only, grey theirs only
 function cmdFigure(c) {
-  const { bp, g } = R.cmd, layers = byCategory(c, (j) => bp[j] / 1000, (j) => g[j] / 1000);
+  const { bp, g } = R.view.cmd, layers = byCategory(c, (j) => bp[j] / 1000, (j) => g[j] / 1000);
   const xs = layers.flatMap((l) => l[1]), ys = layers.flatMap((l) => l[2]), n = layers.map((l) => l[1].length);
   return scatter({ x0: Math.min(...xs) - 0.1, x1: Math.max(...xs) + 0.1, y0: Math.min(...ys) - 0.3, y1: Math.max(...ys) + 0.3,
     layers, xlabel: 'BP − RP', ylabel: 'G',
@@ -795,7 +892,7 @@ function cmdFigure(c) {
 // Proper-motion diagram: the same stars as the colour-magnitude diagram, over the field that shares the cluster's
 // patch of sky and distance (light grey). Square, centred on the cluster's motion, wide enough for most of the field
 function motionFigure(c) {
-  const step = R.meta.pm_step, pm = R.cmd.pm, [o, k] = c.near, [cl, cb] = c.pm;
+  const step = R.meta.pm_step, pm = R.view.cmd.pm, [o, k] = c.near, [cl, cb] = c.pm;
   const field = [[], []];
   for (let j = o; j < o + k; j++) field[0].push(R.near[2 * j] * step), field[1].push(R.near[2 * j + 1] * step);
   const off = field[0].map((v, j) => Math.max(Math.abs(v - cl), Math.abs(field[1][j] - cb))).sort((a, b) => a - b);
@@ -830,14 +927,15 @@ function intro(meta) {
   document.title = `${meta.title} · gaia-clusters`;
 }
 
-function fillFind(meta) {
-  const order = (a, b) => meta.clusters[a].label.localeCompare(meta.clusters[b].label, 'en', { numeric: true });
-  const all = meta.clusters.map((_, i) => i);
-  const option = (i) => `<option value="${i}">${esc(meta.clusters[i].label)}</option>`;
-  const rec = all.filter((i) => meta.clusters[i].recovered).sort(order), miss = all.filter((i) => !meta.clusters[i].recovered).sort(order);
+function fillFind({ clusters }) {
+  const order = (a, b) => clusters[a].label.localeCompare(clusters[b].label, 'en', { numeric: true });
+  const all = clusters.map((_, i) => i), keep = $('#find').value;
+  const option = (i) => `<option value="${i}">${esc(clusters[i].label)}</option>`;
+  const rec = all.filter((i) => clusters[i].recovered).sort(order), miss = all.filter((i) => !clusters[i].recovered).sort(order);
   $('#find').innerHTML = `<option value="">${all.length} clusters</option>
     <optgroup label="Recovered (${rec.length})">${rec.map(option).join('')}</optgroup>
     <optgroup label="Missed (${miss.length})">${miss.map(option).join('')}</optgroup>`;
+  $('#find').value = keep;
 }
 
 function fieldStatus() {
@@ -854,7 +952,7 @@ $('#find').addEventListener('change', (e) => { if (e.target.value !== '') pin({ 
 $('#by-age').addEventListener('change', () => R && paint(R));
 $('#unverified').addEventListener('change', (e) => {
   if (!R) return;
-  R.unverified.visible = e.target.checked;
+  R.view.unverified.visible = e.target.checked;
   document.querySelector('.unverified-key').hidden = !e.target.checked;
   if (!e.target.checked && (pinned?.kind === 'group' || hovered?.kind === 'group')) { hovered = null; pin(null); }
   needs = true;
@@ -889,6 +987,8 @@ addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape' && pinned) { pin(null); $('#find').value = ''; }
 });
+$('#one-run').addEventListener('change', () => chooseRun().catch(failed));
+$('#run').addEventListener('input', () => chooseRun().catch(failed));
 $('#tour-start').addEventListener('click', () => tour(0));
 $('#tour-next').addEventListener('click', () => tour(stop_ + 1));
 $('#tour-back').addEventListener('click', () => tour(stop_ - 1));

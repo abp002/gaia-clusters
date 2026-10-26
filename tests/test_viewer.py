@@ -7,7 +7,7 @@ import pytest
 from gaia_clusters.score import score
 from gaia_clusters.region import galactic
 from gaia_clusters.viewer import (PM_STEP, build, cmd_stars, drift_reference, galactic_pm, near, rates, heliocentric, level_bounds, owners, quantize,
-                                   quantize_pm, write)
+                                   quantize_pm, view, write)
 
 SIZES = [10, 20, 40, 80]
 
@@ -119,13 +119,18 @@ def region():
                           "reliable": [True, False], "rtpc": [8.0, 12.5], "pm_l": [-3.5, 1.25], "pm_b": [0.5, -2.0],
                           "logAge16": [7.9, 8.5], "logAge50": [8.0, 8.7], "logAge84": [8.1, 8.9]},
                          index=pd.Index(["A", "B"], name="Name"))
-    for k in SIZES:
-        s = score(stars.Source, labels[str(k)], members, table.index).set_index("Name")
+    return stars, labels, members, rescore(table, stars, labels, members)
+
+
+def rescore(table, stars, labels, members):
+    """score_region's columns for every run in `labels`, and recovered by any of them."""
+    for k in labels.columns:
+        s = score(stars.Source, labels[k], members, table.index).set_index("Name")
         table["n"], table["recoverable"] = s.n, s.recoverable
         table[f"recovered_{k}"], table[f"label_{k}"] = s.recovered, s.label
         table[f"recovery_{k}"], table[f"purity_{k}"] = s.recovery, s.purity
-    table["recovered"] = table[[f"recovered_{k}" for k in SIZES]].any(axis=1)
-    return stars, labels, members, table
+    table["recovered"] = table[[f"recovered_{k}" for k in labels.columns]].any(axis=1)
+    return table
 
 
 def test_the_written_files_draw_every_star_once_and_in_the_right_place(tmp_path):
@@ -188,3 +193,33 @@ def test_every_star_keeps_its_own_proper_motion(tmp_path):
     free = stars.iloc[85:97]  # the group of 12 that nobody owns
     assert [free.pm_l.median(), free.pm_b.median()] == pytest.approx(u[np.array(meta["unverified"]["n"]) == 12][0], abs=1e-3)
     assert json.loads((tmp_path / "meta.json").read_text())["region"] == "test"
+
+
+def test_a_single_run_shows_what_that_run_recovers_and_the_score_any_run(tmp_path):
+    stars, labels, members, table = region()
+    labels.loc[np.arange(0, 40), "80"] = -1  # A, recovered by the other runs, is lost at 80
+    table = rescore(table, stars, labels, members)
+    runs = {k: view(stars, labels, members, table, run=k) for k in SIZES}
+    meta = write(tmp_path, build(stars, labels, members, table, {}, unverified_run=10), {"region": "test"}, runs, SIZES)
+
+    assert [c["recovered"] for c in meta["clusters"]] == [True, False]  # the score: any run
+    assert [(s["run"], s["recovered"], s["groups"], s["unverified"]) for s in meta["runs"]["sweep"]] == [
+        (10, 1, 3, 2), (20, 1, 1, 0), (40, 1, 1, 0), (80, 0, 0, 0)]
+    assert meta["runs"]["protocol"] == SIZES
+
+    lost = json.loads((tmp_path / "run-80.json").read_text())
+    a, b = lost["clusters"]
+    assert (a["recovered"], a["how"], a["members"], lost["members"]["count"]) == (False, "not found", None, 0)
+    assert b["how"] == "not found"
+    assert (tmp_path / lost["members"]["file"]).read_bytes() == b""
+
+    fine = json.loads((tmp_path / "run-10.json").read_text())
+    a, b = fine["clusters"]
+    assert (a["recovered"], a["members"], b["how"]) == (True, [0, 40], "inside a bigger group (purity ≤ 0.5)")
+    assert sorted(fine["unverified"]["n"]) == [12, 45]
+    k = fine["cmd"]["count"]
+    cat = np.frombuffer((tmp_path / fine["cmd"]["file"]).read_bytes(), "u1", k, offset=4 * k)
+    assert np.bincount(cat[b["cmd"][0]:sum(b["cmd"])], minlength=3).tolist() == [20, 25, 0]
+
+    write(tmp_path, build(stars, labels, members, table, {}, unverified_run=10), {"region": "test"})
+    assert not list(tmp_path.glob("run-*"))  # a write without runs leaves none from before

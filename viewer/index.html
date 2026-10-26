@@ -61,6 +61,12 @@
 <label class="toggle"><input type="checkbox" id="sun-frame"><span>As seen from the Sun</span></label>
 <p class="time-note" id="time-note">Each star drifts along the sky at its proper motion, a million years a second, less the typical motion of the field at its distance: the Sun's own motion and the Galaxy's rotation shift every star there alike, and would hide the rest. Gaia has no radial velocity for most of these stars, so nothing moves in depth, and every path is a straight line.</p>
 </div>
+<div class="time runs" id="runs" hidden>
+<label class="toggle"><input type="checkbox" id="one-run"><span>One run at a time</span></label>
+<label class="clock"><span>min_cluster_size</span><input type="range" id="run" min="0" max="9" step="1" value="0" disabled aria-describedby="run-note"></label>
+<output class="mono" id="run-out" for="run"></output>
+<p class="time-note" id="run-note">HDBSCAN calls a clump a cluster only if it holds at least min_cluster_size stars. Small values cut the field into many small groups, most of which no catalogue lists; large ones merge neighbours and lose the poorer clusters. A cluster counts as recovered if any of the runs the protocol fixed recovers it; the other sizes were run afterwards, to explore, and are not part of the score.</p>
+</div>
 <div class="tour" id="tour" role="region" aria-label="Guided tour" hidden>
 <span class="tour-step mono" id="tour-step"></span>
 <p id="tour-text" aria-live="polite"></p>
@@ -82,6 +88,11 @@
 <p class="rates-lede">The share of the recoverable clusters (10 members or more in our sample) that at least one HDBSCAN run recovers, in both regions. Carina was clustered with its rule fixed in advance; Auriga's leaf runs are post hoc. Size matters more than distance: the biggest clusters all come back, the smallest about half the time.</p>
 <div class="rates-key" id="rates-key"></div>
 <div class="rates-charts" id="rates-charts"></div>
+<div class="sweep" id="sweep" hidden>
+<h3>One run at a time</h3>
+<p class="rates-lede">Each HDBSCAN run alone, with min_cluster_size from 10 to 240, as on the slider under the map. These runs came after the score, to explore, and are not part of it. Smaller sizes recover more clusters, and find many more groups that no catalogue lists.</p>
+<div class="rates-charts" id="sweep-charts"></div>
+</div>
 </section>
 <section id="method">
 <h2>How to read it</h2>
