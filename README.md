@@ -11,6 +11,14 @@ already ran HDBSCAN over Gaia DR3 and catalogued about 7,000 clusters. Their cat
 as the reference: the score is the share of their members we recover, and the share of what we
 find that they also list.
 
+![Carina in three dimensions: grey field stars, recovered clusters in blue, missed ones as red rings](figures/render-carina.jpg)
+
+*Carina, 2.5 million Gaia DR3 stars, looking along the Galactic plane about 2.4 kpc from the Sun. Grey:
+field stars at their Bailer-Jones distance. Blue: the members of each recovered cluster, at the cluster's
+distance, lighter for younger (Hunt & Reffert's age). Red rings: clusters HDBSCAN missed. Rendered in
+Blender from the viewer's data ([scripts/render.py](scripts/render.py)); points and rings are sized to be
+seen, not to scale.*
+
 ## First check: the Pleiades
 
 A 6° cone around the Pleiades with parallax > 1 mas, RUWE < 1.4 and parallax/error > 5
@@ -217,4 +225,5 @@ uv run scripts/fetch_region.py auriga   # stars and distances from GAVO, Hunt & 
 uv run scripts/score_region.py auriga   # HDBSCAN runs, scores, figures (same for carina)
 uv run scripts/sweep_region.py auriga   # optional: leaf runs from 10 to 240 for the viewer's slider
 uv run scripts/export_viewer.py auriga  # the viewer's data
+blender -b -P scripts/render.py -- auriga  # a still from the viewer's data, figures/render-auriga.jpg
 ```

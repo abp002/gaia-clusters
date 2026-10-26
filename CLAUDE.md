@@ -38,6 +38,10 @@ Issues: abp002/gaia-clusters
   summary in `results/<region>_sweep.csv`), exploration outside the score. The export turns each into a
   single-run view (`view(run=k)` in viewer.py: `run-<k>.json` and `run-<k>-*.bin`); the page's slider swaps
   views (`makeView`/`setView` in main.js). `meta.json` stays the score's view: each cluster from its best run.
+- `scripts/render.py`: Blender (5.2, Cycles on Metal) still from `viewer/data/<region>/`, run headless. Points through
+  geometry nodes (Mesh to Points); an unlit transparent-emission material composites the faint field stars into a
+  density on paper, as the page does. Default camera: perspective along the wedge at the recovered clusters'
+  median distance. Views tried: from above (a 10° wedge is a thin sliver) and from behind the Sun (near stars blow up).
 - `viewer/`: static page, three.js 0.170 from jsdelivr, no build step. Clusters are spheres (instanced,
   tidal radius `rtpc`, at least 4 CSS px, resized every frame in `drawSpheres`). The field is rendered as a
   density (stars per pixel counted in a half-float buffer, shown in grey on a log scale). `viewer/data/`
@@ -55,6 +59,7 @@ Issues: abp002/gaia-clusters
 - `uv run pytest` — projection and scoring tests.
 - `uv run scripts/pleiades.py [min_cluster_size] [min_samples]` — Pleiades check, writes `figures/pleiades.png`.
 - `uv run scripts/sweep_region.py <region>` — the slider's runs (under a minute; reuses the cached tree), before the export.
+- `blender -b -P scripts/render.py -- <region>` — the README's still, `figures/render-<region>.jpg` (after the export).
 - `uv run scripts/export_viewer.py <region>` — the viewer's data into `viewer/data/<region>/`;
   `python3 -m http.server -d viewer` to look at it (any free port: another session may hold 8000).
 - `uv run scripts/fetch_region.py <region>` then `uv run scripts/score_region.py <region>` — one region
