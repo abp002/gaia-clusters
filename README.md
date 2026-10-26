@@ -192,7 +192,7 @@ The viewer in [viewer/](viewer/) shows both regions in space, seen from above th
 one fills from the Sun: the field, the recovered clusters and the missed ones. Each cluster has a
 card with its distance, recovery, purity and colour-magnitude diagram.
 
-![The viewer: Carina's wedge seen from above, with Trumpler 19 selected](figures/viewer.png)
+![The viewer: Carina's wedge seen from above, coloured by age, with Trumpler 19 selected and both isochrones over its diagram](figures/viewer.png)
 
 - **Field stars sit at their own distance**, the geometric one of
   [Bailer-Jones et al. (2021)](https://doi.org/10.3847/1538-3881/abd806), not at one over the
