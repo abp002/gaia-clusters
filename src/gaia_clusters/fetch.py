@@ -137,3 +137,28 @@ def isochrones(z: float = 0.0152, log_age=(6.6, 10.05, 0.05)) -> pd.DataFrame:
     header = next(l for l in lines if l.startswith("# Zini")).lstrip("# ").split()
     rows = np.loadtxt(io.StringIO("\n".join(l for l in lines if l and not l.startswith("#"))))
     return pd.DataFrame(rows, columns=header)
+
+
+def hyades_sample(adql_condition: str) -> pd.DataFrame:
+    """All-sky Gaia DR3 within 500 pc (parallax > 2 mas), parallax_over_error > 10, RUWE < 1.4, with the
+    Hyades' velocity condition (hyades.adql_residual_below) applied by the server to keep the download small."""
+    query = f"""
+        SELECT source_id, ra, dec, parallax, parallax_error, pmra, pmdec,
+               phot_g_mean_mag, phot_bp_mean_mag - phot_rp_mean_mag AS bp_rp, ruwe
+        FROM gaia.dr3lite
+        WHERE parallax > 2 AND parallax > 10 * parallax_error AND ruwe < {MAX_RUWE}
+          AND {adql_condition}"""
+    t = _async(GAVO_TAP, query).to_pandas()
+    t.columns = COLUMNS
+    return t
+
+
+def by_source_id(ids) -> pd.DataFrame:
+    """Gaia DR3 stars by source ID, with no cuts, in `box`'s column names."""
+    query = f"""
+        SELECT source_id, ra, dec, parallax, parallax_error, pmra, pmdec,
+               phot_g_mean_mag, phot_bp_mean_mag - phot_rp_mean_mag AS bp_rp, ruwe
+        FROM gaia.dr3lite WHERE source_id IN ({", ".join(str(int(i)) for i in sorted(set(ids)))})"""
+    t = _async(GAVO_TAP, query, poll_s=10).to_pandas()
+    t.columns = COLUMNS
+    return t

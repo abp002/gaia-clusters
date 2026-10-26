@@ -186,6 +186,30 @@ So the age colouring in the viewer stays Hunt & Reffert's, as a catalogue value,
 project reproduces. Each card shows both ages and draws both isochrones over the diagram, so a miss
 like the ones above can be seen. Full tables in [results/ages.md](results/ages.md).
 
+## The Hyades' tidal tails: not reproduced with a velocity cut
+
+The Hyades, 47 pc away, lose stars into two tidal tails that Röser et al. (2019) traced over a few
+hundred parsecs and Jerabkova et al. (2021) out to about 800 pc end to end. Across that much sky a
+tail star's proper motion changes with its position, so the regions' method cannot see them. The test,
+fixed in [docs/protocol-hyades.md](docs/protocol-hyades.md) before the download: a convergent-point cut
+(tangential velocity within 3 km/s of the Hyades' space velocity projected at each star, widened by
+the parallax error), then HDBSCAN with excess of mass on 3D position, over all stars within 500 pc.
+
+**The bar is not met.** The velocity cut keeps 165,536 of 913,737 stars, and excess of mass puts
+152,904 of them in one group, the whole volume. So it "recovers" 283 of Jerabkova et al.'s 439 tail stars
+in our sample (64 %), and 88 % of Röser et al.'s, but only because it takes everything: under 1 % of
+our tail stars are theirs. Excess of mass fails as it did in Auriga.
+
+The diagnostic after the run says why no velocity cut would have saved it. Jerabkova et al.'s tail
+stars stop sharing the cluster's tangential velocity with distance: a median of 1.1 km/s off within
+100 pc of the Sun, 3.0 at 100–200 pc, 6.7 at 200–300 and 8.8 beyond. Tail stars drift away from the
+cluster's velocity as they go, which their method models with N-body simulations. Beyond 200 pc, 77 of
+their tail stars sit among 70,000 field stars closer to the cluster's velocity than they are. The near
+tails, within 200 pc, are where a plain velocity cut has a chance; the 800 pc tails are a model-based
+selection, not something this cut can check ([results/hyades.md](results/hyades.md)).
+
+![The velocity-cut sample from above and edge-on, with Jerabkova et al.'s tail members](figures/hyades.png)
+
 ## In three dimensions
 
 The viewer in [viewer/](viewer/) shows both regions in space, seen from above the wedge that each
@@ -261,5 +285,7 @@ uv run scripts/score_region.py auriga   # HDBSCAN runs, scores, figures (same fo
 uv run scripts/sweep_region.py auriga   # optional: leaf runs from 10 to 240 for the viewer's slider
 uv run scripts/fit_ages.py auriga       # isochrone ages (also --calibration, --post-hoc); then compare_ages.py
 uv run scripts/export_viewer.py auriga  # the viewer's data
+uv run scripts/fetch_hyades.py          # the Hyades: all-sky sample within 500 pc (~15 min) and the references
+uv run scripts/hyades.py                # convergent point + HDBSCAN, scored against the published tails
 blender -b -P scripts/render.py -- auriga  # a still from the viewer's data, figures/render-auriga.jpg
 ```

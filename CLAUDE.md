@@ -28,6 +28,10 @@ Issues: abp002/gaia-clusters
   distance modulus, bootstrap interval (`docs/protocol-ages.md`; settings frozen in `Settings`). The protocol's bar
   failed (56 % within 0.3 dex): distant groups truncated by the parallax cut fit as ~10 Myr. `--post-hoc`
   (`faint_quantile=0.9`) is reported beside it, never instead. The CMD service needs `truststore` (no intermediate cert).
+- `hyades.py` + `scripts/fetch_hyades.py`, `scripts/hyades.py`: Hyades tails (`docs/protocol-hyades.md`). The download
+  applies the convergent-point condition server-side in ADQL (`adql_residual_below`, tested against `residual`): 914k
+  stars within 500 pc and 10 km/s. Reference stars are fetched by ID with no cuts (`fetch.by_source_id`). Result: eom
+  swallows the volume; Jerabkova's tail stars drift 3–9 km/s off the cluster's velocity beyond 100 pc.
 - `viewer.py` + `scripts/export_viewer.py`: the 3D viewer's data. Field stars at their Bailer-Jones
   geometric distance (`data/<region>_distances.parquet`, from GAVO `gedr3dist.litewithdist` with the
   star query's polygon and cuts); members of a recovered cluster at the cluster's `dist50`, because a
