@@ -86,3 +86,27 @@ Written down so the result can contradict them. They are not part of the test ab
   pre-main sequence, which our photometry barely reaches.
 - Where extinction is high, age and extinction trade off, and the intervals widen.
 - Most clusters with fewer than 50 stars are given an age, but a loose one.
+
+## Frozen settings (after calibration, before the test run)
+
+Committed with the code that fits (`src/gaia_clusters/ages.py`, `Settings`), after fitting only the
+three calibration clusters and before any test cluster.
+
+- The likelihood became a model of where stars should be, not only how far each is from the curve: the
+  isochrone's points are weighted by the share of stars the Kroupa IMF puts at each (PARSEC's int_IMF)
+  and normalised over the magnitudes kept. With plain distance to the curve, NGC 3532 came out at 8.10,
+  on an isochrone whose turnoff sits a magnitude above its brightest star and whose giants miss the
+  three it has: a younger isochrone fits the main sequence just as well and pays nothing for the stars it
+  predicts and the data lack.
+- Widths: σ_colour = 0.05 mag, σ_G = 0.15 mag. Uniform component: f = 0.2. Each star sums the 32
+  nearest isochrone points, densified to 0.2 widths apart.
+- Phases: PARSEC labels 0 to 7, from the pre-main sequence to the early AGB; thermal pulses left out.
+- Stars and model cut to 5 ≤ G ≤ 18: Gaia saturates at the bright end, and at the faint end our
+  parallax cut (parallax_over_error > 5) loses stars in a way that depends on distance, which the IMF
+  weighting would read as a shortage of low-mass stars.
+- No binary sequence: unresolved binaries go to the uniform component.
+
+What calibration showed, for the record: NGC 3532 8.65, Trumpler 19 9.60, M37 8.85, against Hunt &
+Reffert's 8.38, 9.34 and 8.69, so 0.16 to 0.27 dex older in all three. In NGC 3532 and M37 Hunt &
+Reffert's isochrone puts the turnoff above the brightest stars in our groups; in M37 ours runs below
+its giants. The settings were not tuned to close that gap.

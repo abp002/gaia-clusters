@@ -1,15 +1,19 @@
-"""Download Gaia DR3 stars and Hunt & Reffert (2023) members.
+"""Download Gaia DR3 stars, Hunt & Reffert (2023) members and PARSEC isochrones.
 
 ESA's Gaia TAP returned 500/408 on cone queries in October 2026 (archive release 3.15). Small
 regions come from VizieR (a 6° cone takes about 15 minutes); big ones from the GAVO Data Center
 in Heidelberg (`gaia.dr3lite`), through an async TAP job.
 """
+import io
+import re
 import time
 
 import astropy.units as u
+import numpy as np
 import pandas as pd
 import pyvo
 import requests
+import truststore
 from astropy.coordinates import SkyCoord
 from astroquery.vizier import Vizier
 
@@ -19,6 +23,7 @@ GAIA_DR3 = "I/355/gaiadr3"
 HR23_CLUSTERS = "J/A+A/673/A114/clusters"
 HR23_MEMBERS = "J/A+A/673/A114/members"
 GAVO_TAP = "https://dc.zah.uni-heidelberg.de/tap"
+PARSEC_CMD = "https://stev.oapd.inaf.it/cgi-bin/cmd_3.9"
 COLUMNS = ["Source", "RA_ICRS", "DE_ICRS", "Plx", "e_Plx", "pmRA", "pmDE", "Gmag", "BP-RP", "RUWE"]
 
 # Quality cuts: parallax > 1 mas (~1 kpc), RUWE < 1.4, parallax_over_error > 5
@@ -104,3 +109,31 @@ def hr23_members_in(region: GalacticBox) -> pd.DataFrame:
     t = v.query_constraints(catalog=HR23_MEMBERS, GLON=f"{region.l_min}..{region.l_max}",
                             GLAT=f"{region.b_min}..{region.b_max}")[0].to_pandas()
     return t[region.contains(t.GLON, t.GLAT)].reset_index(drop=True)
+
+
+def isochrones(z: float = 0.0152, log_age=(6.6, 10.05, 0.05)) -> pd.DataFrame:
+    """PARSEC v1.2S + COLIBRI isochrones in Gaia EDR3 passbands (YBC, Vega), Kroupa IMF, no extinction,
+    at metallicity `z`, for log10(age / yr) from `log_age`'s first to its second value in its steps. The
+    CMD 3.9 web form writes the table to a file it keeps for two hours. One row per point, in the
+    form's columns (logAge, Mini, label, Gmag, G_BPmag, G_RPmag, ...)."""
+    lo, hi, step = log_age
+    form = {"cmd_version": "3.9", "track_parsec": "parsec_CAF09_v1.2S", "track_colibri": "parsec_CAF09_v1.2S_S_LMC_08_web",
+            "track_postagb": "no", "n_inTPC": "10", "eta_reimers": "0.2", "kind_interp": "1", "kind_postagb": "-1",
+            "photsys_file": "YBC_tab_mag_odfnew/tab_mag_gaiaEDR3.dat", "photsys_version": "YBCnewVega",
+            "dust_sourceM": "dpmod60alox40", "dust_sourceC": "AMCSIC15", "kind_mag": "2", "kind_dust": "0",
+            "extinction_av": "0.0", "extinction_coeff": "constant", "extinction_curve": "cardelli", "kind_LPV": "4",
+            "imf_file": "tab_imf/imf_kroupa_orig.dat", "isoc_isagelog": "1", "isoc_lagelow": str(lo),
+            "isoc_lageupp": str(hi + step / 2), "isoc_dlage": str(step), "isoc_ismetlog": "0", "isoc_zlow": str(z),
+            "isoc_zupp": str(z), "isoc_dz": "0.0", "output_kind": "0", "output_evstage": "1", "submit_form": "Submit"}
+    truststore.inject_into_ssl()  # the server sends no intermediate certificate; the system's store fetches it
+    page = requests.post(PARSEC_CMD, data=form, timeout=600)
+    page.raise_for_status()
+    found = re.search(r"tmp/(output\d+\.dat)", page.text)
+    if not found:
+        raise RuntimeError(f"CMD gave no table: {re.sub(r'<[^>]+>', ' ', page.text)[:500]}")
+    table = requests.get(f"https://stev.oapd.inaf.it/tmp/{found.group(1)}", timeout=600)
+    table.raise_for_status()
+    lines = table.text.splitlines()
+    header = next(l for l in lines if l.startswith("# Zini")).lstrip("# ").split()
+    rows = np.loadtxt(io.StringIO("\n".join(l for l in lines if l and not l.startswith("#"))))
+    return pd.DataFrame(rows, columns=header)

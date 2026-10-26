@@ -11,6 +11,8 @@ dependencies = [
     "pandas>=2.2",
     "pyarrow>=17",
     "scikit-learn>=1.6",
+    "scipy>=1.18.1",
+    "truststore>=0.10.5",
 ]
 
 [dependency-groups]
