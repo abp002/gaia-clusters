@@ -11,6 +11,8 @@ already ran HDBSCAN over Gaia DR3 and catalogued about 7,000 clusters. Their cat
 as the reference: the score is the share of their members we recover, and the share of what we
 find that they also list.
 
+**[Open the 3D viewer](https://alejandroborrego.dev/gaia-clusters/)**: Auriga and Carina in the browser.
+
 ![Carina in three dimensions: grey field stars, recovered clusters in blue, missed ones as red rings](figures/render-carina.jpg)
 
 *Carina, 2.5 million Gaia DR3 stars, looking along the Galactic plane about 2.4 kpc from the Sun. Grey:
@@ -212,7 +214,7 @@ selection, not something this cut can check ([results/hyades.md](results/hyades.
 
 ## In three dimensions
 
-The viewer in [viewer/](viewer/) shows both regions in space, seen from above the wedge that each
+The [viewer](https://alejandroborrego.dev/gaia-clusters/) ([source](viewer/)) shows both regions in space, seen from above the wedge that each
 one fills from the Sun: the field, the recovered clusters and the missed ones. Each cluster has a
 card with its distance, recovery, purity and colour-magnitude diagram.
 
