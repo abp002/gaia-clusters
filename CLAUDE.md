@@ -51,6 +51,10 @@ Issues: abp002/gaia-clusters
   geometry nodes (Mesh to Points); an unlit transparent-emission material composites the faint field stars into a
   density on paper, as the page does. Default camera: perspective along the wedge at the recovered clusters'
   median distance. Views tried: from above (a 10° wedge is a thin sliver) and from behind the Sun (near stars blow up).
+- `scripts/film.py` + `scripts/film_encode.py`: the one-minute film (night style) from `viewer/data/<region>/`. Stars drift
+  through a `vel` attribute times a keyed clock in geometry nodes; shots are keyframes in `SHOTS`, titles (ffmpeg drawtext,
+  Charter: New York's default instance has no hyphen) follow the same seconds. Members get a modelled depth, as deep as
+  their cluster is wide on the sky; point sizes shrink for the close-up. Frames in `data/film/<region>/`, ~6 s each on an M4.
 - `viewer/`: static page, three.js 0.170 from jsdelivr, no build step. Clusters are spheres (instanced,
   tidal radius `rtpc`, at least 4 CSS px, resized every frame in `drawSpheres`). The field is rendered as a
   density (stars per pixel counted in a half-float buffer, shown in grey on a log scale). `viewer/data/`
@@ -69,6 +73,8 @@ Issues: abp002/gaia-clusters
 - `uv run scripts/pleiades.py [min_cluster_size] [min_samples]` — Pleiades check, writes `figures/pleiades.png`.
 - `uv run scripts/sweep_region.py <region>` — the slider's runs (under a minute; reuses the cached tree), before the export.
 - `blender -b -P scripts/render.py -- <region>` — the README's still, `figures/render-<region>.jpg` (after the export).
+- `blender -b -P scripts/film.py -- <region> [--preview]` then `uv run scripts/film_encode.py <region> [--preview]` —
+  the film, `figures/film-<region>.mp4` (~3 h for 1080p; the preview, 640x360 every third frame, ~25 min).
 - `uv run scripts/export_viewer.py <region>` — the viewer's data into `viewer/data/<region>/`;
   `python3 -m http.server -d viewer` to look at it (any free port: another session may hold 8000).
 - `uv run scripts/fetch_region.py <region>` then `uv run scripts/score_region.py <region>` — one region
