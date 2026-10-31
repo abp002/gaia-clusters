@@ -1,7 +1,7 @@
 # gaia-clusters
 
 Recover known open clusters from Gaia DR3 with HDBSCAN and score them against Hunt & Reffert
-(2023). Written in English. The why and the decisions live in the vault note (Proyectos/gaia-clusters).
+(2023). Written in English.
 
 ## QA
 Nivel: activo
