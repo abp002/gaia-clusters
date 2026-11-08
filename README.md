@@ -13,6 +13,8 @@ find that they also list.
 
 **[Open the 3D viewer](https://alejandroborrego.dev/gaia-clusters/)**: Auriga and Carina in the browser.
 
+**[Watch the one-minute film](figures/film-carina.mp4)**: a flight through Carina, rendered in Blender from the viewer's data.
+
 ![Carina in three dimensions: grey field stars, recovered clusters in blue, missed ones as red rings](figures/render-carina.jpg)
 
 *Carina, 2.5 million Gaia DR3 stars, looking along the Galactic plane about 2.4 kpc from the Sun. Grey:
